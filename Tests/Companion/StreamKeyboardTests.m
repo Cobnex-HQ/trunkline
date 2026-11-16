@@ -4,6 +4,13 @@
 #import "KeyboardSupport.h"
 #import "AbsoluteTouchHandler.h"
 #import "RelativeTouchHandler.h"
+#import <CoreData/CoreData.h>
+
+// Test-facing declaration avoids importing the app target’s generated model headers.
+@protocol TrunklineSettingsFixture <NSObject>
+- (void)saveSettingsWithBitrate:(NSInteger)bitrate framerate:(NSInteger)fps height:(NSInteger)height width:(NSInteger)width audioConfig:(NSInteger)audio onscreenControls:(NSInteger)controls optimizeGames:(BOOL)optimize multiController:(BOOL)multi swapABXYButtons:(BOOL)swap audioOnPC:(BOOL)audioPC preferredCodec:(uint32_t)codec useFramePacing:(BOOL)pacing enableHdr:(BOOL)hdr btMouseSupport:(BOOL)mouse absoluteTouchMode:(BOOL)direct statsOverlay:(BOOL)stats;
+- (NSObject *)getSettings;
+@end
 #import "VideoDecoderRenderer.h"
 #import "Moonlight-Swift.h"
 #import <AVFoundation/AVFoundation.h>
@@ -62,6 +69,14 @@
 - (NSTimeInterval)timestamp { return 1; }
 - (CGPoint)locationInView:(UIView *)view { return CGPointMake(100, 100); }
 @end
+@interface PositionedStreamTouch : FixtureStreamTouch
+@property(nonatomic) CGPoint point;
+@property(nonatomic) NSTimeInterval time;
+@end
+@implementation PositionedStreamTouch
+- (NSTimeInterval)timestamp { return self.time; }
+- (CGPoint)locationInView:(UIView *)view { return self.point; }
+@end
 @interface FixtureStreamTouchEvent : UIEvent
 @property(nonatomic, strong) NSSet<UITouch *> *touchSet;
 @end
@@ -94,6 +109,65 @@
 @interface StreamKeyboardTests : XCTestCase
 @end
 @implementation StreamKeyboardTests
+- (void)testFirstStreamSettingsSavePreservesDirectTouchForTheViewer {
+    // A fresh installation has no Settings row. Use the shipped Core Data model
+    // and its real validation rules, with only disk storage replaced by memory.
+    NSManagedObjectModel *model = [NSManagedObjectModel mergedModelFromBundles:nil];
+    NSPersistentStoreCoordinator *store = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:model];
+    NSError *error = nil;
+    XCTAssertNotNil([store addPersistentStoreWithType:NSInMemoryStoreType configuration:nil URL:nil options:nil error:&error]);
+    NSManagedObjectContext *(^context)(void) = ^{
+        NSManagedObjectContext *value = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSMainQueueConcurrencyType];
+        value.persistentStoreCoordinator = store;
+        return value;
+    };
+    NSObject<TrunklineSettingsFixture> *writer = [NSClassFromString(@"DataManager") new];
+    [writer setValue:context() forKey:@"managedObjectContext"];
+    [writer saveSettingsWithBitrate:20000 framerate:60 height:982 width:1512
+        audioConfig:2 onscreenControls:0 optimizeGames:NO multiController:YES
+        swapABXYButtons:NO audioOnPC:NO preferredCodec:0 useFramePacing:NO
+        enableHdr:NO btMouseSupport:NO absoluteTouchMode:YES statsOverlay:NO];
+    NSObject<TrunklineSettingsFixture> *reader = [NSClassFromString(@"DataManager") new];
+    [reader setValue:context() forKey:@"managedObjectContext"];
+    NSObject *saved = [reader getSettings];
+    XCTAssertTrue([[saved valueForKey:@"absoluteTouchMode"] boolValue], @"The viewer must not fall back to trackpad mode after saving direct touch");
+    XCTAssertEqualObjects([saved valueForKey:@"width"], @1512);
+    XCTAssertEqualObjects([saved valueForKey:@"height"], @982);
+    XCTAssertGreaterThan([[saved valueForKey:@"uniqueId"] length], 0U);
+}
+
+- (void)testDirectTouchMovesToEveryTapEvenNearThePreviousTap {
+    PointerRecordingView *view = [[PointerRecordingView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
+    StreamConfiguration *config = [StreamConfiguration new]; config.width = 1000; config.height = 1000;
+    [view setupStreamView:nil interactionDelegate:nil config:config];
+    AbsoluteTouchHandler *handler = [[AbsoluteTouchHandler alloc] initWithView:view];
+    PositionedStreamTouch *touch = [PositionedStreamTouch new]; touch.targetView = view;
+    touch.point = CGPointMake(500, 500); touch.time = 10;
+    FixtureStreamTouchEvent *event = [FixtureStreamTouchEvent new]; event.touchSet = [NSSet setWithObject:touch];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    [handler touchesEnded:event.touchSet withEvent:event];
+    touch.point = CGPointMake(510, 510); touch.time = 10.1;
+    [handler touchesBegan:event.touchSet withEvent:event];
+    XCTAssertEqualWithAccuracy(view.packetPoint.x / view.packetSize.width, 0.51, 0.0001);
+    XCTAssertEqualWithAccuracy(view.packetPoint.y / view.packetSize.height, 0.51, 0.0001);
+    [handler touchesEnded:event.touchSet withEvent:event];
+}
+
+- (void)testDirectTouchSendsTheFinalFingerPositionBeforeEndingADrag {
+    PointerRecordingView *view = [[PointerRecordingView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
+    StreamConfiguration *config = [StreamConfiguration new]; config.width = 1000; config.height = 1000;
+    [view setupStreamView:nil interactionDelegate:nil config:config];
+    AbsoluteTouchHandler *handler = [[AbsoluteTouchHandler alloc] initWithView:view];
+    PositionedStreamTouch *touch = [PositionedStreamTouch new]; touch.targetView = view;
+    touch.point = CGPointMake(500, 500); touch.time = 10;
+    FixtureStreamTouchEvent *event = [FixtureStreamTouchEvent new]; event.touchSet = [NSSet setWithObject:touch];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    touch.point = CGPointMake(540, 560); touch.time = 10.1;
+    [handler touchesEnded:event.touchSet withEvent:event];
+    XCTAssertEqualWithAccuracy(view.packetPoint.x / view.packetSize.width, 0.54, 0.0001);
+    XCTAssertEqualWithAccuracy(view.packetPoint.y / view.packetSize.height, 0.56, 0.0001);
+}
+
 - (void)testRealStreamViewMapsRenderedTargetsToWireCoordinatesAcrossViewportSizes {
     NSArray<NSValue *> *sizes = @[[NSValue valueWithCGSize:CGSizeMake(390, 700)],
         [NSValue valueWithCGSize:CGSizeMake(800, 350)], [NSValue valueWithCGSize:CGSizeMake(1024, 1240)],

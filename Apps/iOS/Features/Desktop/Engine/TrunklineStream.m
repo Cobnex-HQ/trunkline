@@ -100,6 +100,7 @@
 
 @interface ElephantStreamController : StreamFrameViewController
 @property(nonatomic, copy) void (^onClose)(void);
+@property(nonatomic, copy) void (^workspaceAction)(NSString *);
 @property(nonatomic, strong) TrunklineViewportCoordinator *viewport;
 - (void)showKeyboard;
 - (void)changeZoom:(CGFloat)factor;
@@ -216,9 +217,9 @@
     config.useFramePacing = framePacing; config.playAudioOnPC = NO; config.optimizeGameSettings = NO;
     return config;
 }
-- (UIViewController *)streamControllerWithConfig:(StreamConfiguration *)config close:(void (^)(void))close {
+- (UIViewController *)streamControllerWithConfig:(StreamConfiguration *)config close:(void (^)(void))close workspaceAction:(void (^)(NSString *))workspaceAction {
     ElephantStreamController *controller = [ElephantStreamController new];
-    controller.streamConfig = config; controller.onClose = close; return controller;
+    controller.streamConfig = config; controller.onClose = close; controller.workspaceAction = workspaceAction; return controller;
 }
 - (void)showKeyboardInController:(UIViewController *)controller {
     if ([controller isKindOfClass:ElephantStreamController.class]) [(ElephantStreamController *)controller showKeyboard];
@@ -290,6 +291,7 @@
     if (scroll && content) {
         CGFloat aspect = (CGFloat)self.streamConfig.width / MAX(1, self.streamConfig.height);
         self.viewport = [[TrunklineViewportCoordinator alloc] initWithScroll:scroll content:content aspect:aspect];
+        self.viewport.workspaceAction = self.workspaceAction;
     }
 }
 - (void)viewDidLayoutSubviews {
@@ -300,7 +302,7 @@
     [self.viewport changeZoom:factor];
 }
 - (void)willMoveToParentViewController:(UIViewController *)parent {
-    if (!parent) { [super returnToMainFrame]; self.onClose = nil; }
+    if (!parent) { [super returnToMainFrame]; self.onClose = nil; self.workspaceAction = nil; self.viewport.workspaceAction = nil; }
     [super willMoveToParentViewController:parent];
 }
 - (void)returnToMainFrame { [super returnToMainFrame]; if (self.onClose) self.onClose(); }

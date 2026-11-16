@@ -12,7 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)pair;
 - (nullable StreamConfiguration *)configurationForApp:(NSString *)appID title:(NSString *)title
     width:(int)width height:(int)height fps:(int)fps bitrate:(int)bitrate directTouch:(BOOL)directTouch framePacing:(BOOL)framePacing stats:(BOOL)stats;
-- (UIViewController *)streamControllerWithConfig:(StreamConfiguration *)config close:(void (^)(void))close;
+- (UIViewController *)streamControllerWithConfig:(StreamConfiguration *)config close:(void (^)(void))close workspaceAction:(void (^)(NSString *))workspaceAction;
 - (void)showKeyboardInController:(UIViewController *)controller;
 - (void)changeZoomInController:(UIViewController *)controller factor:(CGFloat)factor;
 - (void)updateDisplayInController:(UIViewController *)controller width:(int)width height:(int)height;

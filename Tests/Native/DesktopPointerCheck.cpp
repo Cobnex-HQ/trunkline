@@ -14,6 +14,8 @@ namespace fixture {
   std::vector<CGRect> displays;
   CGPoint pointer {};
   CGPoint posted {};
+  bool stale_snapshot = false;
+  CGPoint snapshot {};
   CGEventType type {};
   unsigned posts = 0;
   bool enumeration_fails = false;
@@ -36,7 +38,7 @@ namespace fixture {
     if (ids) { for (uint32_t i = 0; i < *count; ++i) { ids[i] = i + 1; } }
     return kCGErrorSuccess;
   }
-  CGPoint location(CGEventRef) { return pointer; }
+  CGPoint location(CGEventRef) { return stale_snapshot ? snapshot : pointer; }
   void post(CGEventTapLocation, CGEventRef event) {
     posted = CGEventGetLocation(event);
     type = CGEventGetType(event);
@@ -84,9 +86,23 @@ int main() {
   };
   submit({.kind = absolute_motion, .x = 960, .y = 540, .width = 3432, .height = 1080});
   expect(-960, 540, "absolute point on left display");
-  fixture::pointer = {-960, 540};
+  // WindowServer may still report the preceding cursor position when the
+  // button packet arrives immediately after its absolute motion packet.
+  fixture::snapshot = {100, 100};
+  fixture::stale_snapshot = true;
   submit({.kind = button, .button = lvh::MouseButton::left, .pressed = true});
   expect(-960, 540, "click must not jump back to primary display");
+  if (fixture::type != kCGEventLeftMouseDown) { ++failures; }
+  submit({.kind = absolute_motion, .x = 1000, .y = 560, .width = 3432, .height = 1080});
+  expect(-920, 560, "absolute drag follows finger despite stale snapshot");
+  if (fixture::type != kCGEventLeftMouseDragged) { ++failures; }
+  submit({.kind = button, .button = lvh::MouseButton::left, .pressed = false});
+  expect(-920, 560, "release stays at final finger position");
+  if (fixture::type != kCGEventLeftMouseUp) { ++failures; }
+  submit({.kind = absolute_motion, .x = 960, .y = 540, .width = 3432, .height = 1080});
+  submit({.kind = button, .button = lvh::MouseButton::left, .pressed = true});
+  expect(-960, 540, "next tap moves to its own target");
+  fixture::stale_snapshot = false;
   submit({.kind = relative_motion, .x = 20, .y = -10});
   expect(-940, 530, "drag on left display");
   if (fixture::type != kCGEventLeftMouseDragged) { ++failures; }

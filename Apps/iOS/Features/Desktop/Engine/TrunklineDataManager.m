@@ -67,6 +67,13 @@
     
     [_managedObjectContext performBlockAndWait:^{
         Settings* settingsToSave = [self retrieveSettings];
+        // Trunkline does not run the legacy main controller's IdManager setup.
+        // Core Data requires this field; without it every first settings save
+        // fails and StreamView silently reloads the default trackpad mode.
+        if (settingsToSave.uniqueId.length == 0) {
+            uint64_t identifier = ((uint64_t)arc4random() << 32) | arc4random();
+            settingsToSave.uniqueId = [NSString stringWithFormat:@"%016llx", (unsigned long long)identifier];
+        }
         settingsToSave.framerate = [NSNumber numberWithInteger:framerate];
         settingsToSave.bitrate = [NSNumber numberWithInteger:bitrate];
         settingsToSave.height = [NSNumber numberWithInteger:height];

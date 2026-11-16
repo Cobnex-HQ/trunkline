@@ -271,7 +271,10 @@ private struct DesktopSurface: UIViewControllerRepresentable {
     let close: () -> Void
     @Binding var controller: UIViewController?
     func makeUIViewController(context: Context) -> UIViewController {
-        let view = engine.streamController(withConfig: config, close: close)
+        let view = engine.streamController(withConfig: config, close: close) { [weak engine] name in
+            guard let engine, let action = DesktopWorkspaceAction(rawValue: name) else { return }
+            action.perform(on: engine)
+        }
         DispatchQueue.main.async { controller = view }
         return view
     }
@@ -287,6 +290,9 @@ private struct DesktopScreen: View {
     @ObservedObject var model: ConnectionModel
     let close: () -> Void
     @SwiftUI.State private var showControls = false
+    @SwiftUI.State private var showGestures = false
+    @FocusState private var textFocused: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @SwiftUI.State private var toolbarVisible = true
     @SwiftUI.State private var controller: UIViewController?
     @SwiftUI.State private var paste = false
@@ -307,6 +313,8 @@ private struct DesktopScreen: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
                         leadingTools
+                        tool("Mission Control", "rectangle.3.group") { DesktopWorkspaceAction.missionControl.perform(on: engine) }
+                        workspaceMenu
                         Divider().frame(height: 24)
                         zoomTools
                         Divider().frame(height: 24)
@@ -314,10 +322,17 @@ private struct DesktopScreen: View {
                     }.fixedSize(horizontal: true, vertical: false)
                     HStack(spacing: 4) {
                         leadingTools
-                        Menu { zoomCommands } label: {
-                            Image(systemName: "plus.magnifyingglass").frame(width: 44, height: 44)
-                        }.accessibilityLabel("Zoom")
-                        trailingTools
+                        workspaceMenu
+                        DesktopDisplayMenu(controls: model.controls, compact: true) { pendingMonitorID = $0 }
+                        Menu {
+                            zoomCommands
+                            Divider()
+                            shortcutCommands
+                            Divider()
+                            Button("Mac controls", systemImage: "slider.horizontal.3") { showControls = true }
+                            Button("Hide toolbar", systemImage: "chevron.down") { toolbarVisible = false }
+                        } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
+                            .accessibilityLabel("More desktop controls")
                     }
                 }
                 .frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, 4)
@@ -332,6 +347,14 @@ private struct DesktopScreen: View {
             ControlsView(controls: model.controls, files: model.files, dismissible: true)
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                model.controls.refresh(automatically: true)
+                do { try await Task.sleep(for: .seconds(5)) } catch { break }
+            }
+        }
+        .sheet(isPresented: $showGestures) { gestureHelp }
         .onChange(of: controller) { _, _ in updateDisplayGeometry(model.controls.snapshot) }
         .onReceive(model.controls.$snapshot) { snapshot in updateDisplayGeometry(snapshot) }
         .onReceive(model.controls.$error) { error in
@@ -341,11 +364,12 @@ private struct DesktopScreen: View {
         .sheet(isPresented: $paste) {
             NavigationStack {
                 Form {
-                    TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 180)
+                    TextEditor(text: $text).focused($textFocused).font(.system(.body, design: .monospaced)).frame(minHeight: 180)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to send")
                     PasteButton(payloadType: String.self) { text = $0.joined(separator: "\n") }
                     Text("Review commands before sending. Newlines may execute them on your Mac.").font(.footnote).foregroundStyle(.secondary)
                 }.navigationTitle("Send text")
+                    .task { textFocused = true }
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { text = ""; paste = false } }
                         ToolbarItem(placement: .confirmationAction) { Button("Send") { engine.sendText(text); text = ""; paste = false }.disabled(text.isEmpty || text.utf8.count > 65536) }
@@ -390,9 +414,42 @@ private struct DesktopScreen: View {
         if factor == 0 { engine.resetZoom(in: controller) }
         else { engine.changeZoom(in: controller, factor: factor) }
     }
-    private var trailingTools: some View {
-        Group {
+    private var workspaceMenu: some View {
         Menu {
+            ForEach(DesktopWorkspaceAction.allCases) { action in
+                Button(action.title, systemImage: action.symbol) { action.perform(on: engine) }
+            }
+            Divider()
+            Button("Gestures & displays", systemImage: "hand.draw") { showGestures = true }
+        } label: { Image(systemName: "rectangle.stack").frame(width: 44, height: 44) }
+            .accessibilityLabel("Spaces and windows")
+    }
+    private var gestureHelp: some View {
+        NavigationStack {
+            List {
+                Section("Touch the Mac") {
+                    Label("In direct-touch mode, tap to click; move one finger to drag.", systemImage: "hand.tap")
+                    Label("Use Keyboard in the toolbar to type on your Mac.", systemImage: "keyboard")
+                }
+                Section("Zoom and move the view") {
+                    Label("Pinch to zoom. When zoomed in, pan with two fingers.", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                Section("Mac Spaces and windows") {
+                    Label("Swipe left or right with three fingers to change Spaces.", systemImage: "arrow.left.arrow.right")
+                    Label("Swipe up with three fingers for Mission Control; down for App windows.", systemImage: "rectangle.3.group")
+                    Text("These actions use the Mac’s Control–Arrow keyboard shortcuts. You can also use the Spaces and windows menu.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Physical monitors") {
+                    Label("Use Displays in the toolbar to switch between connected Mac monitors. Each display keeps its own proportions.", systemImage: "display.2")
+                    Text("Spaces are virtual desktops on a monitor. Create or rearrange them in Mission Control.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }.navigationTitle("Desktop gestures").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showGestures = false } } }
+        }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+    }
+    @ViewBuilder private var shortcutCommands: some View {
             key("Escape", 0x1B); key("Tab", 0x09)
             key("Copy", 0x43, 0x08); key("Paste", 0x56, 0x08); key("Cut", 0x58, 0x08)
             key("Undo", 0x5A, 0x08); key("Select all", 0x41, 0x08); key("Save", 0x53, 0x08)
@@ -404,7 +461,11 @@ private struct DesktopScreen: View {
                 key("Left", 0x25); key("Up", 0x26); key("Right", 0x27); key("Down", 0x28)
             }
             Button("Send text…") { paste = true }
-        } label: { Image(systemName: "command").frame(width: 44, height: 44) }.accessibilityLabel("Shortcuts")
+    }
+    private var trailingTools: some View {
+        Group {
+            Menu { shortcutCommands } label: { Image(systemName: "command").frame(width: 44, height: 44) }
+                .accessibilityLabel("Shortcuts")
             DesktopDisplayMenu(controls: model.controls, compact: true) { pendingMonitorID = $0 }
             tool("Mac controls", "slider.horizontal.3") { showControls = true }
             tool("Hide toolbar", "chevron.down") { toolbarVisible = false }

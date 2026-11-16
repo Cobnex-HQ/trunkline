@@ -80,10 +80,14 @@ struct ConnectView: View {
     @State private var scanner = false
     @State private var manual = false
     @State private var forget = false
+    @State private var passcodeFocused = false
+    @State private var usePasscode = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var pairing: PairingDetails? { try? PairingDetails.parse(model.pairingText) }
     private var connecting: Bool { model.phase != .setup }
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             Form {
                 Section {
                     HStack(spacing: 12) {
@@ -135,15 +139,17 @@ struct ConnectView: View {
                         }
                     }
                     Section {
-                        if model.canUnlockSaved && model.passcode.isEmpty && !connecting {
+                        if model.canUnlockSaved && model.passcode.isEmpty && !connecting && !usePasscode {
                             Button { Task { await model.unlockSaved() } } label: {
                                 Label("Unlock and connect", systemImage: "lock.open").frame(maxWidth: .infinity, minHeight: 28)
                             }.buttonStyle(.borderedProminent)
+                            Button("Use passcode instead") { usePasscode = true; passcodeFocused = true }
                         } else {
-                            SecureField("Connection passcode", text: $model.passcode).textContentType(.password)
-                                .submitLabel(.go).onSubmit { model.connect() }.disabled(connecting)
+                            ConnectionPasscodeField(text: $model.passcode, focused: $passcodeFocused,
+                                                    enabled: !connecting, submit: connect)
+                                .id("connection-passcode")
                             if !connecting {
-                                Button("Connect") { model.connect() }.disabled(model.passcode.isEmpty)
+                                Button("Connect", action: connect).disabled(model.passcode.isEmpty)
                                     .buttonStyle(.borderedProminent).frame(maxWidth: .infinity, minHeight: 44)
                             }
                         }
@@ -160,6 +166,14 @@ struct ConnectView: View {
                 }
                 Section { AppearancePicker() }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: passcodeFocused) { _, focused in
+                if focused { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("connection-passcode", anchor: .center) } }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                if passcodeFocused { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo("connection-passcode", anchor: .center) } }
+            }
+            .onChange(of: model.selectedMacID) { _, _ in passcodeFocused = false; usePasscode = false }
             .formStyle(.grouped)
             .nativeWorkspaceStyle()
             .frame(maxWidth: 700).frame(maxWidth: .infinity)
@@ -181,9 +195,11 @@ struct ConnectView: View {
             .onAppear {
                 if model.openPairingScanner { model.openPairingScanner = false; scanner = true }
             }
+            }
             .sheet(isPresented: $scanner) { PairingScanner { link in if let url = URL(string: link) { model.receivePairingLink(url) } } }
         }
     }
+    private func connect() { passcodeFocused = false; model.connect() }
 }
 
 struct ClipboardView: View {

@@ -4,11 +4,105 @@ import TrunklineCore
 import XCTest
 import Network
 import SwiftUI
+import UIKit
 import SwiftTerm
 @testable import Trunkline
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testPasscodeRevealPreservesFocusSelectionAndSubsequentTyping() throws {
+        let type = try XCTUnwrap(NSClassFromString("Trunkline.ConnectionPasscodeTextField") as? UITextField.Type,
+                                 "The connection form needs a native, focus-preserving passcode field")
+        let field = type.init(frame: CGRect(x: 20, y: 100, width: 300, height: 48))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 768, height: 1024))
+        window.rootViewController = UIViewController(); window.makeKeyAndVisible()
+        defer { field.resignFirstResponder(); window.isHidden = true }
+        window.rootViewController?.view.addSubview(field)
+        field.text = "abcd"
+        XCTAssertTrue(field.isSecureTextEntry)
+        XCTAssertTrue(field.becomeFirstResponder())
+        let insertion = try XCTUnwrap(field.position(from: field.beginningOfDocument, offset: 2))
+        field.selectedTextRange = field.textRange(from: insertion, to: insertion)
+        let reveal = try XCTUnwrap(field.rightView as? UIButton)
+        reveal.sendActions(for: .touchUpInside)
+        XCTAssertFalse(field.isSecureTextEntry)
+        XCTAssertTrue(field.isFirstResponder, "Revealing the password must not dismiss the iPad keyboard")
+        field.insertText("x")
+        XCTAssertEqual(field.text, "abxcd", "Keep the insertion point when revealing")
+        reveal.sendActions(for: .touchUpInside)
+        XCTAssertTrue(field.isSecureTextEntry)
+        XCTAssertTrue(field.isFirstResponder)
+        field.insertText("y")
+        XCTAssertEqual(field.text, "abxycd", "Hiding must not clear or replace the passcode on the next key")
+        field.resignFirstResponder()
+        XCTAssertTrue(field.becomeFirstResponder())
+        field.insertText("z")
+        XCTAssertEqual(field.text, "abxyzcd", "Returning to a saved draft must preserve the passcode")
+    }
+
+    func testConnectionFormKeepsFocusedPasscodeAboveSoftwareKeyboard() async throws {
+        let suite = "trunkline-keyboard-form-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults)
+        for index in 1...4 {
+            let pairing = try PairingDetails(host: "mac-\(index).local", port: 47995,
+                                            fingerprint: String(repeating: String(index), count: 64))
+            model.receivePairingLink(try XCTUnwrap(URL(string: pairing.link)))
+        }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: ConnectView(model: model))
+        window.rootViewController = host; window.makeKeyAndVisible()
+        defer { host.view.endEditing(true); window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
+        host.view.layoutIfNeeded()
+        func findPasscode(_ view: UIView) -> ConnectionPasscodeTextField? {
+            (view as? ConnectionPasscodeTextField) ?? view.subviews.lazy.compactMap(findPasscode).first
+        }
+        try await terminalEventually { findPasscode(host.view) != nil }
+        let field = try XCTUnwrap(findPasscode(host.view))
+        XCTAssertTrue(field.becomeFirstResponder(), "Tapping the native input must activate the keyboard")
+        try await terminalEventually(timeout: 4) { host.view.keyboardLayoutGuide.layoutFrame.height > 100 }
+        try await terminalEventually(timeout: 4) {
+            let input = field.convert(field.bounds, to: host.view)
+            let keyboard = host.view.keyboardLayoutGuide.layoutFrame
+            return input.minY >= host.view.safeAreaInsets.top && input.maxY <= keyboard.minY
+        }
+        field.insertText("test-passcode")
+        try await terminalEventually { model.passcode == "test-passcode" }
+        let reveal = try XCTUnwrap(field.rightView as? UIButton)
+        reveal.sendActions(for: .touchUpInside)
+        XCTAssertFalse(field.isSecureTextEntry)
+        XCTAssertTrue(field.isFirstResponder)
+        field.resignFirstResponder()
+        XCTAssertTrue(field.isSecureTextEntry, "Leaving the input must conceal the passcode")
+    }
+
+    func testThreeFingerSwipesRouteSpacesAndMissionControlWithoutTakingTwoFingerPan() throws {
+        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 1024, height: 768))
+        let content = UIView(frame: scroll.bounds); scroll.addSubview(content)
+        let viewport = ViewportCoordinator(scroll: scroll, content: content, aspect: 16.0 / 10)
+        let swipes = (scroll.gestureRecognizers ?? []).compactMap { $0 as? UISwipeGestureRecognizer }
+        XCTAssertEqual(swipes.count, 4, "Install a three-finger shortcut for each direction")
+        guard swipes.count == 4 else { return }
+        XCTAssertTrue(swipes.allSatisfy { $0.numberOfTouchesRequired == 3 })
+        XCTAssertEqual(scroll.panGestureRecognizer.maximumNumberOfTouches, 2)
+        var actions: [String] = []
+        let callback: @convention(block) (String) -> Void = { actions.append($0) }
+        viewport.setValue(callback, forKey: "workspaceAction")
+        for (direction, expected) in [(UISwipeGestureRecognizer.Direction.left, "nextSpace"),
+                                      (.right, "previousSpace"), (.up, "missionControl"), (.down, "appWindows")] {
+            let recognized = RecognizedWorkspaceSwipe(); recognized.direction = direction
+            recognized.state = .ended
+            _ = viewport.perform(NSSelectorFromString("handleWorkspaceSwipe:"), with: recognized)
+            XCTAssertEqual(actions.last, expected)
+        }
+        let cancelled = RecognizedWorkspaceSwipe(); cancelled.state = .cancelled
+        _ = viewport.perform(NSSelectorFromString("handleWorkspaceSwipe:"), with: cancelled)
+        XCTAssertEqual(actions.count, 4, "A cancelled gesture must not change the Mac workspace")
+    }
+
     // Cold simulator services can take seconds to create listeners or open files.
     // This bounds fixture startup; heartbeat and protocol deadlines below stay short.
     private let fixtureStartupTimeout: TimeInterval = 10
@@ -833,4 +927,12 @@ private struct TerminalKeyboardFixture: View {
         channel?.send(.terminals(sessions))
     }
     func stop() { listener.cancel(); channel?.onClose = nil; channel?.close(); channel = nil }
+}
+
+private final class RecognizedWorkspaceSwipe: UISwipeGestureRecognizer {
+    private var reportedState: UIGestureRecognizer.State = .possible
+    override var state: UIGestureRecognizer.State {
+        get { reportedState }
+        set { reportedState = newValue }
+    }
 }

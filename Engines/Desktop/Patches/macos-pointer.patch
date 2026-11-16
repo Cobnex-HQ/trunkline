@@ -1,17 +1,17 @@
 diff --git a/README.md b/README.md
-index 531a5cc..793a5a8 100644
+index 531a5cc..b8df855 100644
 --- a/README.md
 +++ b/README.md
 @@ -205,3 +205,7 @@ for the authoritative repository path and artifact assignments.
  |          | [End-User Gamepad Guide](docs/end-user-gamepad-guide.md) |
- 
+
  </div>
 +
 +## Trunkline macOS coordinate adaptation
 +
-+The Trunkline backend adaptation interprets absolute mouse coordinates within the logical bounding rectangle of all active displays. Coordinates are normalized from the caller-provided dimensions, then translated by the desktop origin. Relative motion and buttons retain the current global position and clamp to the nearest active screen rather than the primary monitor. Display topology is cached and refreshed on CoreGraphics reconfiguration callbacks. Consumers must supply matching global desktop metadata; this patch must be paired with Trunkline’s capture-geometry patch.
++The Trunkline backend adaptation interprets absolute mouse coordinates within the logical bounding rectangle of all active displays. Coordinates are normalized from the caller-provided dimensions, then translated by the desktop origin. Buttons following absolute motion use the last requested target, even before WindowServer has processed it. Relative motion switches back to the current global position and clamps to the nearest active screen rather than the primary monitor. Display topology is cached and refreshed on CoreGraphics reconfiguration callbacks. Consumers must supply matching global desktop metadata; this patch must be paired with Trunkline’s capture-geometry patch.
 diff --git a/src/platform/macos/macos_backend.cpp b/src/platform/macos/macos_backend.cpp
-index c67ca89..b148471 100644
+index c67ca89..3fe876d 100644
 --- a/src/platform/macos/macos_backend.cpp
 +++ b/src/platform/macos/macos_backend.cpp
 @@ -6,6 +6,7 @@
@@ -25,7 +25,7 @@ index c67ca89..b148471 100644
 @@ -378,6 +379,35 @@ namespace lvh::detail {
        };
      }
- 
+
 +    /**
 +     * @brief Immutable logical-coordinate topology shared by mouse events.
 +     */
@@ -67,12 +67,12 @@ index c67ca89..b148471 100644
 +        refresh_display_layout();
 +        CGDisplayRegisterReconfigurationCallback(display_changed, this);
 +      }
- 
+
        MacosInputState(const MacosInputState &) = delete;
        MacosInputState &operator=(const MacosInputState &) = delete;
 @@ -397,6 +430,7 @@ namespace lvh::detail {
        MacosInputState &operator=(MacosInputState &&) noexcept = delete;
- 
+
        ~MacosInputState() {
 +        CGDisplayRemoveReconfigurationCallback(display_changed, this);
          if (mouse_event) {
@@ -81,7 +81,7 @@ index c67ca89..b148471 100644
 @@ -408,6 +442,54 @@ namespace lvh::detail {
          }
        }
- 
+
 +      std::shared_ptr<const DisplayLayout> layout;  ///< Updated only on display reconfiguration.
 +      mutable std::mutex layout_mutex;  ///< Protects publication of immutable topology snapshots.
 +
@@ -144,17 +144,46 @@ index c67ca89..b148471 100644
 -        };
 +        const auto topology = state_->display_layout();
 +        const auto location = topology->clamp(raw_location);
- 
+
          const auto event = state_->mouse_event;
          CGEventSetType(event, type);
-@@ -720,8 +799,8 @@ namespace lvh::detail {
+@@ -713,6 +792,8 @@ namespace lvh::detail {
        }
- 
+
+       OperationStatus submit_relative_motion(std::int32_t delta_x, std::int32_t delta_y) {
++        // Relative devices follow the system cursor again when switching modes.
++        absolute_location_.reset();
+         const auto current = current_location();
+         const auto location = CGPoint {current.x + delta_x, current.y + delta_y};
+         const auto motion = macos_mouse_motion(mouse_down_);
+@@ -720,8 +801,11 @@ namespace lvh::detail {
+       }
+
        OperationStatus submit_absolute_motion(const MouseEvent &event) {
 -        const auto display_bounds = CGDisplayBounds(state_->display);
 -        const auto location = absolute_mouse_location(event, display_bounds);
 +        const auto topology = state_->display_layout();
-+        const auto location = absolute_mouse_location(event, topology->bounds);
++        const auto location = topology->clamp(absolute_mouse_location(event, topology->bounds));
++        // CoreGraphics delivery is asynchronous. Preserve the remote target for
++        // subsequent button packets instead of sampling an older system cursor.
++        absolute_location_ = location;
          const auto motion = macos_mouse_motion(mouse_down_);
          return post_mouse(motion.button, motion.event_type, location, current_location(), 0);
        }
+@@ -737,7 +821,7 @@ namespace lvh::detail {
+         mouse_down_[button->index] = event.pressed;
+         const auto now = std::chrono::steady_clock::now();
+         const auto release_index = event.pressed ? 0U : 1U;
+-        const auto mouse_position = current_location();
++        const auto mouse_position = absolute_location_ ? *absolute_location_ : current_location();
+         const auto click_count = now < last_mouse_event_[button->index][release_index] + multi_click_delay ? 2 : 1;
+
+         last_mouse_event_[button->index][release_index] = now;
+@@ -765,6 +849,7 @@ namespace lvh::detail {
+       }
+
+       std::shared_ptr<MacosInputState> state_;
++      std::optional<CGPoint> absolute_location_;
+       std::array<bool, 3> mouse_down_ {};
+       std::array<std::array<std::chrono::steady_clock::time_point, 2>, 3> last_mouse_event_ {};
+       std::mutex mutex_;

@@ -3,6 +3,7 @@ import TrunklineCore
 #endif
 import SwiftUI
 import AppKit
+import ApplicationServices
 
 struct DesktopSharingView: View {
     @ObservedObject var engine: DesktopHost
@@ -13,62 +14,86 @@ struct DesktopSharingView: View {
     @State private var displayError: String?
     @State private var restart = false
     @State private var stop = false
+    @State private var inputAllowed = CGPreflightPostEventAccess()
 
     var body: some View {
-        Section {
-            HStack {
-                if engine.starting { ProgressView().controlSize(.small) }
-                Label(engine.status, systemImage: engine.running ? "checkmark.circle" : "display")
-            }
-            if !engine.running && !engine.starting {
-                Button("Prepare desktop") { Task { await engine.restart() } }
-                    .disabled(!enabled)
-            }
-            if let error = engine.error {
-                Text(error).foregroundStyle(.secondary).textSelection(.enabled)
-            }
-        }
-        if let selection = engine.displaySelection {
+        Group {
             Section {
-                DesktopDisplayPicker(selection: selection, busy: selectingDisplay) { id in
-                    selectingDisplay = true; displayError = nil
-                    Task {
-                        defer { selectingDisplay = false }
-                        do { try await engine.selectDisplay(id) }
-                        catch { displayError = error.localizedDescription }
-                    }
+                HStack {
+                    if engine.starting { ProgressView().controlSize(.small) }
+                    Label(engine.status, systemImage: engine.running ? "checkmark.circle" : "display")
                 }
-                if let displayError { Text(displayError).foregroundStyle(.secondary) }
-            }
-        }
-        if !engine.pending.isEmpty {
-            Section("Pair a device") {
-                ForEach(engine.pending) { pair in
-                    DesktopPairApprovalRow(pair: pair) { pin in
-                        await engine.approve(pair, pin: pin)
-                    }
+                if inputAllowed {
+                    Label("Mouse and keyboard access enabled", systemImage: "checkmark.shield")
+                        .foregroundStyle(.secondary)
+                }
+                if !engine.running && !engine.starting {
+                    Button("Prepare desktop") { Task { await engine.restart() } }
+                        .disabled(!enabled)
+                }
+                if let error = engine.error {
+                    Text(error).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
-        }
-        Section {
-            DisclosureGroup("Permissions", isExpanded: $permissions) {
-                Text("Enable Trunkline and Trunkline Desktop in Privacy & Security. Restart desktop access after changing permissions.")
-                    .foregroundStyle(.secondary)
-                ViewThatFits(in: .horizontal) {
-                    HStack { permissionButtons }
-                    VStack(alignment: .leading, spacing: 8) { permissionButtons }
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                Button("Restart desktop access…") { restart = true }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(!enabled || engine.starting)
+            if !inputAllowed {
+                Section {
+                    Label("Mouse and keyboard access is off", systemImage: "hand.raised.fill")
+                        .foregroundStyle(.orange)
+                    Text("Screen sharing can work while clicks are blocked. Enable Trunkline in System Settings → Privacy & Security → \(HostPermissionRequester.accessibilitySettingsName).")
+                        .foregroundStyle(.secondary)
+                    Button("Enable mouse and keyboard") {
+                        HostPermissionRequester.request(.accessibility)
+                        openPrivacy("Privacy_Accessibility")
+                    }
+                    Button("Check again") { inputAllowed = CGPreflightPostEventAccess() }
+                }
+            }
+            if let selection = engine.displaySelection {
+                Section {
+                    DesktopDisplayPicker(selection: selection, busy: selectingDisplay) { id in
+                        selectingDisplay = true; displayError = nil
+                        Task {
+                            defer { selectingDisplay = false }
+                            do { try await engine.selectDisplay(id) }
+                            catch { displayError = error.localizedDescription }
+                        }
+                    }
+                    if let displayError { Text(displayError).foregroundStyle(.secondary) }
+                }
+            }
+            if !engine.pending.isEmpty {
+                Section("Pair a device") {
+                    ForEach(engine.pending) { pair in
+                        DesktopPairApprovalRow(pair: pair) { pin in
+                            await engine.approve(pair, pin: pin)
+                        }
+                    }
+                }
+            }
+            Section {
+                DisclosureGroup("Permissions", isExpanded: $permissions) {
+                    Text("Enable Trunkline and Trunkline Desktop in Privacy & Security. Restart desktop access after changing permissions.")
+                        .foregroundStyle(.secondary)
+                    ViewThatFits(in: .horizontal) {
+                        HStack { permissionButtons }
+                        VStack(alignment: .leading, spacing: 8) { permissionButtons }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Restart desktop access…") { restart = true }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .disabled(!enabled || engine.starting)
+                }
+            }
+            Section {
+                DisclosureGroup("Advanced") {
+                    Button("Open desktop logs") { engine.showLogs() }.disabled(engine.directory == nil)
+                    if engine.running { Button("Stop desktop access…", role: .destructive) { stop = true } }
+                    if !engine.clients.isEmpty { Button("Revoke desktop pairings…", role: .destructive) { revoke = true } }
+                }
             }
         }
-        Section {
-            DisclosureGroup("Advanced") {
-                Button("Open desktop logs") { engine.showLogs() }.disabled(engine.directory == nil)
-                if engine.running { Button("Stop desktop access…", role: .destructive) { stop = true } }
-                if !engine.clients.isEmpty { Button("Revoke desktop pairings…", role: .destructive) { revoke = true } }
-            }
+        .onAppear { inputAllowed = CGPreflightPostEventAccess() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            inputAllowed = CGPreflightPostEventAccess()
         }
         .confirmationDialog("Restart desktop access?", isPresented: $restart, titleVisibility: .visible) {
             Button("Restart") { Task { await engine.restart() } }
@@ -83,7 +108,7 @@ struct DesktopSharingView: View {
 
     @ViewBuilder private var permissionButtons: some View {
         Button("Screen Recording") { HostPermissionRequester.request(.screenCapture); openPrivacy("Privacy_ScreenCapture") }
-        Button("Accessibility") { HostPermissionRequester.request(.accessibility); openPrivacy("Privacy_Accessibility") }
+        Button(HostPermissionRequester.accessibilitySettingsName) { HostPermissionRequester.request(.accessibility); openPrivacy("Privacy_Accessibility") }
     }
     private func openPrivacy(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?" + pane) { NSWorkspace.shared.open(url) }

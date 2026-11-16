@@ -15,6 +15,7 @@ import AVFoundation
     private var stableOffset = CGPoint.zero
     private var stableScale: CGFloat = 1
     private var updatingLayout = false
+    @objc var workspaceAction: ((String) -> Void)?
 
     @objc(initWithScroll:content:aspect:)
     init(scroll: UIScrollView, content: UIView, aspect: CGFloat) {
@@ -28,9 +29,30 @@ import AVFoundation
         scroll.bounces = false; scroll.bouncesZoom = false
         scroll.delaysContentTouches = false; scroll.canCancelContentTouches = true
         scroll.panGestureRecognizer.minimumNumberOfTouches = 2
+        scroll.panGestureRecognizer.maximumNumberOfTouches = 2
+        for direction: UISwipeGestureRecognizer.Direction in [.left, .right, .up, .down] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(handleWorkspaceSwipe(_:)))
+            swipe.direction = direction; swipe.numberOfTouchesRequired = 3
+            swipe.cancelsTouchesInView = true
+            swipe.name = "Trunkline workspace swipe"
+            scroll.addGestureRecognizer(swipe)
+        }
         scroll.panGestureRecognizer.isEnabled = false
         content.autoresizingMask = []
         TrunklineViewport.setDisplayAspect(aspect, on: content)
+    }
+
+    @objc func handleWorkspaceSwipe(_ gesture: UISwipeGestureRecognizer) {
+        guard gesture.state == .ended, !UIAccessibility.isVoiceOverRunning else { return }
+        let action: String
+        switch gesture.direction {
+        case .left: action = "nextSpace"
+        case .right: action = "previousSpace"
+        case .up: action = "missionControl"
+        case .down: action = "appWindows"
+        default: return
+        }
+        workspaceAction?(action)
     }
 
     @objc(layoutInBounds:)

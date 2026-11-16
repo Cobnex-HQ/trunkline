@@ -30,7 +30,7 @@ The script installs the Brewfile tools, selects Python and Rust on PATH for this
 
 The install command verifies pinned downloads, compiles the engine for your Mac, builds the host with local ad-hoc signing, verifies the app bundle, and installs it at `~/Applications/Trunkline.app`. Quit an existing app at that destination before installing. The previous installation is retained as `Trunkline.previous.app`. No administrator password or developer membership is needed for this local Mac build.
 
-Open Trunkline and complete macOS Screen Recording and Accessibility setup. macOS controls those permissions; development builds or signing changes can require approval again. Keychain access and unattended operation should be checked before relying on a newly built version.
+Open Trunkline and complete macOS Screen Recording and Device Control and Data Access setup (called Accessibility on earlier macOS versions). macOS controls those permissions; development builds or signing changes can require approval again. Keychain access and unattended operation should be checked before relying on a newly built version.
 
 ## iPhone and iPad
 
@@ -41,6 +41,17 @@ python3 Scripts/dev.py ios
 In the generated Xcode project, select the **Trunkline** scheme, your device, and **your own** signing team. For personal signing settings, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig`. The local file is ignored by Git. Use Xcode to run the app on your device. A personal team can be used for development, subject to Apple's provisioning limits; distribution is a separate process.
 
 Start access in the Mac app, pair the companion on the same network, and verify Desktop and Terminal before trying away access. See [development](docs/DEVELOPMENT.md) and [security](SECURITY.md).
+
+## Desktop controls
+
+Tap the connection passcode field to open the software keyboard. The form scrolls the input into view; the eye button reveals or hides the passcode without interrupting typing. The passcode is hidden again when you leave the field.
+
+In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch mode, tap to click and move one finger to drag. Pinch to zoom and use two fingers to pan while zoomed in.
+
+- Swipe **up with three fingers** for Mission Control, or **down** for App windows.
+- Swipe **left or right with three fingers** to move between the Mac’s Spaces.
+- The **Spaces and windows** menu offers the same actions without gestures. They use the Mac’s standard Control–Arrow shortcuts, which must be enabled on the host.
+- **Displays** selects a connected physical monitor, one at a time, preserving its proportions. Spaces are virtual desktops within a monitor; create or rearrange them in Mission Control.
 
 ## Repository map
 
@@ -62,7 +73,7 @@ Start access in the Mac app, pair the companion on the same network, and verify 
 
 ## Contribute
 
-Run `python3 Scripts/dev.py test` for the shared Swift, Rust and tooling suites. See [CONTRIBUTING.md](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md), and the [test guide](docs/TESTING.md) for app and device checks. Please discuss large architectural changes in an issue first.
+Run `python3 Scripts/dev.py test` for the shared Swift, Rust and tooling suites. See [CONTRIBUTING.md](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md), the [test guide](docs/TESTING.md), and [validation status](docs/VALIDATION.md) for app and device checks. Please discuss large architectural changes in an issue first.
 
 ## Licence and attribution
 

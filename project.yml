@@ -247,6 +247,9 @@ targets:
     platform: iOS
     sources:
     - path: Vendor/MoonlightCore/src
+      excludes:
+      - InputStream.c
+    - path: Engines/Client/TrunklineInputStream.c
     - path: Vendor/MoonlightCore/enet/list.c
     - path: Vendor/MoonlightCore/enet/compress.c
     - path: Vendor/MoonlightCore/enet/packet.c

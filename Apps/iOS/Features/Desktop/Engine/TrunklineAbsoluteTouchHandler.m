@@ -18,12 +18,6 @@
 // How far the finger can move before it cancels a right click
 #define LONG_PRESS_ACTIVATION_DELTA 0.01f
 
-// How long the double tap deadzone stays in effect between touch up and touch down
-#define DOUBLE_TAP_DEAD_ZONE_DELAY 0.250f
-
-// How far the finger can move before it can override the double tap deadzone
-#define DOUBLE_TAP_DEAD_ZONE_DELTA 0.025f
-
 @interface AbsoluteTouchHandler () <TrunklineTouchInput>
 @end
 
@@ -32,8 +26,6 @@
     
     NSTimer* longPressTimer;
     CGPoint lastTouchDownLocation;
-    NSTimeInterval lastTouchUpTimestamp;
-    CGPoint lastTouchUpLocation;
 }
 
 - (id)initWithView:(StreamView*)view {
@@ -63,12 +55,9 @@
     UITouch* touch = [touches anyObject];
     CGPoint touchLocation = [touch locationInView:view];
     
-    // Don't reposition for finger down events within the deadzone. This makes double-clicking easier.
-    if (touch.timestamp - lastTouchUpTimestamp > DOUBLE_TAP_DEAD_ZONE_DELAY ||
-        sqrt(pow((touchLocation.x / view.bounds.size.width) - (lastTouchUpLocation.x / view.bounds.size.width), 2) +
-             pow((touchLocation.y / view.bounds.size.height) - (lastTouchUpLocation.y / view.bounds.size.height), 2)) > DOUBLE_TAP_DEAD_ZONE_DELTA) {
-        [view updateCursorLocation:touchLocation isMouse:NO];
-    }
+    // Direct touch is an absolute target, including a second nearby tap. Keeping
+    // the previous position here makes small controls miss the user's finger.
+    [view updateCursorLocation:touchLocation isMouse:NO];
     
     // Press the left button down
     LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_LEFT);
@@ -105,26 +94,21 @@
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
     // Only fire this logic if all touches have ended
     if ([[event allTouches] count] == [touches count]) {
-        // Cancel the long press timer
-        [longPressTimer invalidate];
-        longPressTimer = nil;
-
-        // Left button up on finger up
-        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
-
-        // Raise right button too in case we triggered a long press gesture
-        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
-        
-        // Remember this last touch for touch-down deadzoning
-        UITouch *lastTouch = [touches anyObject];
-        lastTouchUpTimestamp = lastTouch.timestamp;
-        lastTouchUpLocation = [lastTouch locationInView:view];
+        // UIKit can deliver a new position with the lift, without an intervening
+        // touchesMoved. Send it before releasing so a drag ends at the finger.
+        if (touches.count == 1) {
+            [view updateCursorLocation:[[touches anyObject] locationInView:view] isMouse:NO];
+        }
+        [self touchesCancelled:touches withEvent:event];
     }
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
-    // Treat this as a normal touchesEnded event
-    [self touchesEnded:touches withEvent:event];
+    // Pinch/pan cancellation must release the drag without teleporting to one
+    // of the gesture's fingers or synthesizing a final pointer target.
+    [self cancelPendingInput];
+    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
+    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
 }
 
 @end

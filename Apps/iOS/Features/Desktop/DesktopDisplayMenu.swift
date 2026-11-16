@@ -8,7 +8,6 @@ struct DesktopDisplayMenu: View {
     @ObservedObject var controls: ClientControls
     var compact = false
     var onSelection: (String) -> Void = { _ in }
-    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         Group {
             if let state = controls.snapshot?.desktopDisplays, state.isAvailable {
@@ -48,13 +47,6 @@ struct DesktopDisplayMenu: View {
                         Text(error).font(.caption).foregroundStyle(.orange)
                     }
                 }
-            }
-        }
-        .task(id: scenePhase) {
-            guard compact, scenePhase == .active else { return }
-            while !Task.isCancelled {
-                controls.refresh(automatically: true)
-                do { try await Task.sleep(for: .seconds(5)) } catch { break }
             }
         }
     }

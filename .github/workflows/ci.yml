@@ -27,6 +27,8 @@ jobs:
           gitleaks dir . --redact --no-banner
       - name: Tooling tests
         run: python3 -m unittest discover -s Tests/Tooling
+      - name: Input ordering regression
+        run: Scripts/verify-input-ordering.sh
       - name: Swift core tests
         run: swift test --package-path Packages/Core --scratch-path .build/core --disable-sandbox
       - name: Rust transport tests
