@@ -1,0 +1,40 @@
+diff --git a/cmake/compile_definitions/macos.cmake b/cmake/compile_definitions/macos.cmake
+index acf336c1..d3ecf480 100644
+--- a/cmake/compile_definitions/macos.cmake
++++ b/cmake/compile_definitions/macos.cmake
+@@ -10,16 +10,7 @@ else()
+     set(SUNSHINE_ASSETS_DIR_DEF "../Resources/assets")
+ endif()
+ 
+-set(MACOS_LINK_DIRECTORIES
+-        /opt/homebrew/lib
+-        /opt/local/lib
+-        /usr/local/lib)
+-
+-foreach(dir ${MACOS_LINK_DIRECTORIES})
+-    if(EXISTS ${dir})
+-        link_directories(${dir})
+-    endif()
+-endforeach()
++# Dependency locations come from package discovery, not ambient package-manager paths.
+ 
+ if(NOT BOOST_USE_STATIC AND NOT FETCH_CONTENT_BOOST_USED)
+     ADD_DEFINITIONS(-DBOOST_LOG_DYN_LINK)
+diff --git a/cmake/dependencies/common.cmake b/cmake/dependencies/common.cmake
+index b83c601e..e41bf1da 100644
+--- a/cmake/dependencies/common.cmake
++++ b/cmake/dependencies/common.cmake
+@@ -96,6 +96,13 @@ pkg_check_modules(CURL REQUIRED libcurl)
+ pkg_check_modules(MINIUPNP miniupnpc REQUIRED)
+ include_directories(SYSTEM ${MINIUPNP_INCLUDE_DIRS})
+ 
++# On macOS use the exact pkg-config resolutions. A bare -l name combined with
++# unrelated Homebrew search paths can silently link the wrong architecture or OS floor.
++if(APPLE)
++    set(MINIUPNP_LIBRARIES ${MINIUPNP_LINK_LIBRARIES})
++    set(CURL_LIBRARIES ${CURL_LINK_LIBRARIES})
++endif()
++
+ # ffmpeg pre-compiled binaries
+ include("${CMAKE_MODULE_PATH}/dependencies/ffmpeg.cmake")
+ 

@@ -1,0 +1,317 @@
+name: Trunkline
+options:
+  bundleIdPrefix: com.trunkline
+  deploymentTarget:
+    iOS: '17.0'
+    macOS: '15.0'
+configFiles:
+  Debug: Config/Build.xcconfig
+  Release: Config/Build.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    GENERATE_INFOPLIST_FILE: true
+    CURRENT_PROJECT_VERSION: 3
+    MARKETING_VERSION: 0.1.0
+    CODE_SIGN_STYLE: Automatic
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+targets:
+  CompanionClientTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+    - path: Tests/Companion/CompanionClientTests.swift
+    - path: Tests/Companion/StreamKeyboardTests.m
+    - path: Tests/Companion/StreamStatisticsTests.m
+    dependencies:
+    - target: Trunkline
+    - package: TrunklineCore
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.companion-tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Trunkline.app/Trunkline
+        BUNDLE_LOADER: $(TEST_HOST)
+        CLANG_ENABLE_OBJC_ARC: true
+        CLANG_ENABLE_MODULES: true
+        HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/Vendor/MoonlightSource/Limelight/**
+        - $(SRCROOT)/Packages/Transport/iOS
+        - $(SRCROOT)/Vendor/MoonlightCore/src
+        - $(SRCROOT)/Vendor/MoonlightSource/X1Kit/Sources/X1Kit
+        - $(SRCROOT)/Apps/iOS/Features/Desktop/Engine
+        - $(PROJECT_TEMP_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/Trunkline.build/DerivedSources
+  ViewportUIKitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+    - path: Tests/Companion/ViewportUIKitTests.swift
+    dependencies:
+    - target: Trunkline
+    - package: TrunklineCore
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.viewport-tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Trunkline.app/Trunkline
+        BUNDLE_LOADER: $(TEST_HOST)
+        HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/Vendor/MoonlightSource/Limelight/**
+        - $(SRCROOT)/Packages/Transport/iOS
+        - $(SRCROOT)/Vendor/MoonlightCore/src
+        - $(SRCROOT)/Vendor/MoonlightSource/X1Kit/Sources/X1Kit
+        - $(SRCROOT)/Apps/iOS/Features/Desktop/Engine
+        - $(PROJECT_TEMP_DIR)/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)/Trunkline.build/DerivedSources
+  Trunkline:
+    type: application
+    productName: Trunkline
+    platform: iOS
+    preBuildScripts:
+    - name: Build native direct transport
+      script: /bin/sh "${SRCROOT}/Scripts/build-p2p-probe.sh"
+      basedOnDependencyAnalysis: false
+    postBuildScripts:
+    - name: Bundle third-party notices
+      script: python3 "$SRCROOT/Scripts/bundle-notices.py"
+      basedOnDependencyAnalysis: false
+    sources:
+    - path: Apps/iOS
+    - path: Vendor/MoonlightSource/Limelight
+      excludes:
+      - main.m
+      - Database/DataManager.m
+      - Stream/StreamManager.m
+      - Stream/VideoDecoderRenderer.m
+      - Images.xcassets
+      - Limelight-Info.plist
+      - Utility/Utils.m
+      - Input/StreamView.m
+      - Input/KeyboardSupport.m
+      - Input/AbsoluteTouchHandler.m
+      - Input/RelativeTouchHandler.m
+      - Input/OnScreenControls.m
+      - Input/ControllerSupport.m
+    - path: Vendor/MoonlightSource/X1Kit/Sources/X1Kit
+    dependencies:
+    - target: SwiftTerm
+    - target: TrunklineStreamCore
+    - framework: Vendor/OpenSSL/OpenSSL.xcframework
+      embed: true
+    - package: TrunklineCore
+    settings:
+      base:
+        PRODUCT_NAME: Trunkline
+        PRODUCT_MODULE_NAME: $(TARGET_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.ios
+        TRUNKLINE_P2P_LDFLAGS[sdk=iphoneos*]: -L$(SRCROOT)/Packages/Transport/target/aarch64-apple-ios/release
+          -ltrunkline_p2p_probe -lresolv -framework Security -framework SystemConfiguration
+        TARGETED_DEVICE_FAMILY: 1,2
+        INFOPLIST_KEY_CFBundleDisplayName: Trunkline
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to your Mac for encrypted
+          desktop streaming, terminal sessions and file transfer.
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan the pairing QR code shown on
+          your Mac.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Unlock your saved Mac connection with
+          Face ID.
+        INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+          UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        CLANG_ENABLE_MODULES: true
+        CLANG_ENABLE_OBJC_ARC: true
+        GCC_PREFIX_HEADER: Vendor/MoonlightSource/Limelight/Limelight-Prefix.pch
+        SWIFT_OBJC_BRIDGING_HEADER: Apps/iOS/Features/Desktop/Engine/Elephant-Bridging-Header.h
+        SWIFT_OBJC_INTERFACE_HEADER_NAME: Moonlight-Swift.h
+        HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/Vendor/MoonlightSource/Limelight/**
+        - $(SRCROOT)/Packages/Transport/iOS
+        - $(SRCROOT)/Vendor/MoonlightCore/src
+        - $(SDKROOT)/usr/include/libxml2
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/FFmpeg/include
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/SDL2/include
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/opus/include/opus
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]:
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/opus/lib/iOS
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/SDL2/lib/iOS
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/FFmpeg/lib/iOS
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]:
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/opus/lib/iOS-Sim
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/SDL2/lib/iOS-Sim
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/FFmpeg/lib/iOS-Sim
+        OTHER_LDFLAGS:
+        - $(inherited)
+        - $(TRUNKLINE_P2P_LDFLAGS)
+        - -lopus
+        - -lSDL2
+        - -lavcodec
+        - -lavformat
+        - -lavutil
+        - -lxml2
+        - -liconv
+        - -lz
+        - -lbz2
+        - -framework
+        - GameController
+        - -framework
+        - CoreMotion
+        - -framework
+        - CoreHaptics
+        - -framework
+        - AVKit
+        - -framework
+        - VideoToolbox
+        - -framework
+        - AudioToolbox
+        - -framework
+        - CoreData
+        - -framework
+        - Metal
+    info:
+      path: Apps/iOS/Resources/Info.plist
+      properties:
+        CFBundleURLTypes:
+        - CFBundleURLSchemes:
+          - trunkline
+          CFBundleURLName: com.trunkline.pair
+        ITSAppUsesNonExemptEncryption: true
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoads: true
+        UISupportedInterfaceOrientations~ipad:
+        - UIInterfaceOrientationPortrait
+        - UIInterfaceOrientationPortraitUpsideDown
+        - UIInterfaceOrientationLandscapeLeft
+        - UIInterfaceOrientationLandscapeRight
+  TrunklineHost:
+    type: application
+    productName: Trunkline
+    platform: macOS
+    sources:
+    - Apps/macOS
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: Apple Development
+        PRODUCT_NAME: Trunkline
+        PRODUCT_MODULE_NAME: $(TARGET_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.host
+        INFOPLIST_KEY_CFBundleDisplayName: Trunkline
+        INFOPLIST_KEY_NSScreenCaptureUsageDescription: Stream your desktop to your
+          paired iPhone.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Accept encrypted connections
+          from your iPhone.
+        SWIFT_OBJC_BRIDGING_HEADER: Apps/macOS/App/TrunklineHost-Bridging-Header.h
+        HEADER_SEARCH_PATHS: $(SRCROOT)/Apps/macOS/Features/Terminal
+        ENABLE_APP_SANDBOX: false
+        ENABLE_HARDENED_RUNTIME: true
+        CODE_SIGN_ENTITLEMENTS: Config/TrunklineHost.entitlements
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Allow confirmed restart, shutdown
+          and logout requests from your paired iPhone or iPad.
+    postBuildScripts:
+    - name: Bundle third-party notices
+      script: python3 "$SRCROOT/Scripts/bundle-notices.py"
+      basedOnDependencyAnalysis: false
+    - name: Bundle direct connection transport
+      script: /bin/sh "${SRCROOT}/Scripts/bundle-remote.sh"
+      basedOnDependencyAnalysis: false
+    - name: Bundle Trunkline Desktop
+      script: '"$SRCROOT/Scripts/bundle-desktop.sh"'
+      basedOnDependencyAnalysis: false
+    dependencies:
+    - target: DesktopSupervisor
+      link: false
+    - package: TrunklineCore
+  SwiftTerm:
+    type: framework
+    platform: iOS
+    sources:
+    - Vendor/SwiftTerm/Sources/SwiftTerm
+    resources:
+    - Vendor/SwiftTerm/LICENSE
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.swiftterm
+        SWIFT_VERSION: '5.0'
+        SKIP_INSTALL: true
+        DEFINES_MODULE: true
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: TRUNKLINE
+  TrunklineStreamCore:
+    type: library.static
+    platform: iOS
+    sources:
+    - path: Vendor/MoonlightCore/src
+    - path: Vendor/MoonlightCore/enet/list.c
+    - path: Vendor/MoonlightCore/enet/compress.c
+    - path: Vendor/MoonlightCore/enet/packet.c
+    - path: Vendor/MoonlightCore/enet/unix.c
+    - path: Vendor/MoonlightCore/enet/peer.c
+    - path: Vendor/MoonlightCore/enet/protocol.c
+    - path: Vendor/MoonlightCore/enet/host.c
+    - path: Vendor/MoonlightCore/enet/callbacks.c
+    - path: Vendor/MoonlightCore/enet/win32.c
+    - path: Vendor/MoonlightCore/nanors/rs.c
+    - path: Vendor/MoonlightCore/nanors/deps/obl/oblas_common.c
+    - path: Vendor/MoonlightCore/nanors/deps/obl/oblas_lite.c
+    dependencies:
+    - framework: Vendor/OpenSSL/OpenSSL.xcframework
+      embed: false
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        GCC_C_LANGUAGE_STANDARD: gnu11
+        GCC_PREPROCESSOR_DEFINITIONS:
+        - $(inherited)
+        - HAS_SOCKLEN_T
+        - NDEBUG
+        HEADER_SEARCH_PATHS:
+        - $(SRCROOT)/Packages/Transport/iOS
+        - $(SRCROOT)/Vendor/MoonlightCore/src
+        - $(SRCROOT)/Vendor/MoonlightCore/enet/include
+        - $(SRCROOT)/Vendor/MoonlightCore/nanors
+        - $(SRCROOT)/Vendor/MoonlightCore/nanors/deps/obl
+        SKIP_INSTALL: true
+  DesktopSupervisor:
+    type: tool
+    platform: macOS
+    sources:
+    - Services/DesktopSupervisor
+    settings:
+      base:
+        PRODUCT_NAME: TrunklineDesktopSupervisor
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.supervisor
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        GCC_C_LANGUAGE_STANDARD: gnu11
+        SKIP_INSTALL: true
+schemes:
+  CompanionClientTests:
+    build:
+      targets:
+        CompanionClientTests: all
+    test:
+      targets:
+      - CompanionClientTests
+  ViewportUIKitTests:
+    build:
+      targets:
+        ViewportUIKitTests: all
+    test:
+      targets:
+      - ViewportUIKitTests
+  Trunkline:
+    build:
+      targets:
+        Trunkline: all
+  TrunklineHost:
+    build:
+      targets:
+        TrunklineHost: all
+packages:
+  TrunklineCore:
+    path: Packages/Core

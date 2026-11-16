@@ -1,0 +1,67 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    name: Shared code and tooling
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Secret scan
+        run: |
+          brew install gitleaks
+          gitleaks dir . --redact --no-banner
+      - name: Tooling tests
+        run: python3 -m unittest discover -s Tests/Tooling
+      - name: Swift core tests
+        run: swift test --package-path Packages/Core --scratch-path .build/core --disable-sandbox
+      - name: Rust transport tests
+        run: cargo test --locked --manifest-path Packages/Transport/Cargo.toml
+      - name: Public source policy
+        run: python3 Scripts/check-public-source.py
+  companion:
+    name: iOS simulator build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Prepare dependencies
+        run: |
+          brew install xcodegen
+          python3 Scripts/bootstrap.py
+          cargo fetch --locked --manifest-path Packages/Transport/Cargo.toml
+          xcodegen generate
+      - name: Build companion
+        run: >-
+          xcodebuild -quiet -project Trunkline.xcodeproj -scheme Trunkline
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath .build/ios CODE_SIGNING_ALLOWED=NO build
+      - name: Select test simulator
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, subprocess
+          devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '--json']))['devices']
+          runtimes = sorted((key for key in devices if '.iOS-' in key), key=lambda key: tuple(map(int, key.split('.iOS-')[1].split('-'))), reverse=True)
+          phone = next(device for runtime in runtimes for device in devices[runtime] if device['name'].startswith('iPhone'))
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('TEST_SIMULATOR=' + phone['udid'] + '\n')
+          PYTHON
+      - name: Companion and viewport regression tests
+        run: |
+          Scripts/verify-companion.sh "$TEST_SIMULATOR"
+          Scripts/verify-viewport.sh "$TEST_SIMULATOR"

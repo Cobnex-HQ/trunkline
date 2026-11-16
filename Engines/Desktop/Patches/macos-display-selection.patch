@@ -1,0 +1,335 @@
+diff --git a/src/confighttp.cpp b/src/confighttp.cpp
+index 1b473973..c4f664b7 100644
+--- a/src/confighttp.cpp
++++ b/src/confighttp.cpp
+@@ -35,11 +35,16 @@
+   #include <Windows.h>
+ #endif
+ 
++#ifdef __APPLE__
++  #include <CoreGraphics/CoreGraphics.h>
++#endif
++
+ // local includes
+ #include "config.h"
+ #include "confighttp.h"
+ #include "crypto.h"
+ #include "display_device.h"
++#include "display_selection.h"
+ #include "file_handler.h"
+ #include "globals.h"
+ #include "httpcommon.h"
+@@ -1434,6 +1439,92 @@ namespace confighttp {
+     send_response(response, output_tree);
+   }
+ 
++  /**
++   * @brief Enumerate active macOS capture identities without starting capture or changing display settings.
++   * @return Active capture display IDs, labels and native pixel dimensions.
++   */
++  nlohmann::json trunkline_displays() {
++    auto result = nlohmann::json::array();
++#ifdef __APPLE__
++    CGDirectDisplayID ids[32] {};
++    uint32_t count = 0;
++    if (CGGetActiveDisplayList(32, ids, &count) != kCGErrorSuccess) {
++      return result;
++    }
++    const auto devices = display_device::enumerate_devices();
++    for (uint32_t i = 0; i < count; ++i) {
++      const auto id = std::to_string(ids[i]);
++      const auto found = std::find_if(devices.begin(), devices.end(), [&id](const auto &device) {
++        return device.m_display_name == id;
++      });
++      const auto name = found != devices.end() && !found->m_friendly_name.empty() ?
++                          found->m_friendly_name :
++                          (CGDisplayIsBuiltin(ids[i]) ? "Built-in display" : "Display " + std::to_string(i + 1));
++      auto mode = CGDisplayCopyDisplayMode(ids[i]);
++      if (!mode) {
++        continue;
++      }
++      result.push_back({{"id", id}, {"name", name},
++                        {"width", CGDisplayModeGetPixelWidth(mode)},
++                        {"height", CGDisplayModeGetPixelHeight(mode)}});
++      CGDisplayModeRelease(mode);
++    }
++#endif
++    return result;
++  }
++
++  /**
++   * @brief Describe pending intent separately from the display capture has actually opened.
++   * @param displays Fresh available display list.
++   * @return Management response; accepting a selection does not imply capture is ready.
++   */
++  nlohmann::json trunkline_display_status(nlohmann::json displays) {
++    const auto state = video::display_selection().snapshot();
++    nlohmann::json result {{"status", true}, {"displays", std::move(displays)},
++                           {"active_id", nullptr}, {"preferred_id", nullptr}, {"error", nullptr},
++                           {"switching", state.active && state.preferred && state.active != state.preferred}};
++#ifdef __APPLE__
++    result["supported"] = true;
++#else
++    result["supported"] = false;
++#endif
++    if (state.active) { result["active_id"] = *state.active; }
++    if (state.preferred) { result["preferred_id"] = *state.preferred; }
++    if (!state.error.empty()) { result["error"] = state.error; }
++    return result;
++  }
++
++  void getTrunklineDisplays(const resp_https_t &response, const req_https_t &request) {
++    if (!authenticate(response, request)) {
++      return;
++    }
++    send_response(response, trunkline_display_status(trunkline_displays()));
++  }
++
++  void selectTrunklineDisplay(const resp_https_t &response, const req_https_t &request) {
++    if (!authenticate(response, request) || !check_content_type(response, request, "application/json") ||
++        !validate_csrf_token(response, request, get_client_id(request))) {
++      return;
++    }
++    if (request->content.size() > 1024) {
++      bad_request(response, request, "Display selection request is too large");
++      return;
++    }
++    const auto input = nlohmann::json::parse(request->content.string(), nullptr, false);
++    if (!input.is_object() || !input.contains("id") || !input["id"].is_string()) {
++      bad_request(response, request, "A display identity is required");
++      return;
++    }
++    auto displays = trunkline_displays();
++    std::vector<std::string> ids;
++    for (const auto &display : displays) { ids.emplace_back(display.at("id").get<std::string>()); }
++    if (!video::display_selection().request(input["id"].get<std::string>(), ids)) {
++      bad_request(response, request, "The selected display is unavailable");
++      return;
++    }
++    send_response(response, trunkline_display_status(std::move(displays)));
++  }
++
+   /**
+    * @brief Get the locale setting. This endpoint does not require authentication.
+    * @param response The HTTP response object.
+@@ -2363,6 +2454,8 @@ namespace confighttp {
+     server.resource["^/api/clients/unpair$"]["POST"] = unpair;
+     server.resource["^/api/clients/unpair-all$"]["POST"] = unpairAll;
+     server.resource["^/api/clients/update$"]["POST"] = updateClient;
++    server.resource["^/api/trunkline/displays$"]["GET"] = getTrunklineDisplays;
++    server.resource["^/api/trunkline/displays$"]["POST"] = selectTrunklineDisplay;
+     server.resource["^/api/config$"]["GET"] = getConfig;
+     server.resource["^/api/config$"]["POST"] = saveConfig;
+     server.resource["^/api/configLocale$"]["GET"] = getLocale;
+diff --git a/src/confighttp.h b/src/confighttp.h
+index 49c70398..d29291a2 100644
+--- a/src/confighttp.h
++++ b/src/confighttp.h
+@@ -33,6 +33,18 @@ namespace confighttp {
+   using resp_https_t = std::shared_ptr<typename SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Response>;
+   using req_https_t = std::shared_ptr<typename SimpleWeb::ServerBase<SimpleWeb::HTTPS>::Request>;
+ 
++  /** @brief List capture displays and selection status after authentication.
++   * @param response HTTPS response writer.
++   * @param request Incoming management request.
++   */
++  void getTrunklineDisplays(const resp_https_t &response, const req_https_t &request);
++  /** @brief Request a capture display by identity after authentication and CSRF checks.
++   * @param response HTTPS response writer.
++   * @param request JSON request containing the display identity.
++   */
++  void selectTrunklineDisplay(const resp_https_t &response, const req_https_t &request);
++
++
+   // Main server start function
+   void start();
+ 
+diff --git a/src/display_selection.h b/src/display_selection.h
+new file mode 100644
+index 00000000..0ba57e5a
+--- /dev/null
++++ b/src/display_selection.h
+@@ -0,0 +1,87 @@
++/**
++ * @file src/display_selection.h
++ * @brief Thread-safe display identity selection shared by management and capture.
++ */
++#pragma once
++#include <algorithm>
++#include <mutex>
++#include <optional>
++#include <string>
++#include <vector>
++
++namespace video {
++  /** @brief Observable selection intent and the display actually opened by capture. */
++  struct DisplaySelectionSnapshot {
++    std::optional<std::string> preferred;  ///< Last valid user choice, retained while idle.
++    std::optional<std::string> active;  ///< Display opened by the running capture loop.
++    std::string error;  ///< Last topology-related selection failure.
++  };
++
++  /** @brief Resolve display choices by identity, never by a stale UI list position. */
++  class DisplaySelection {
++  public:
++    /**
++     * @brief Accept a choice only if that identity is currently available.
++     * @param id Requested display identity.
++     * @param available Fresh capture display identities.
++     * @return Whether the choice was accepted; rejection leaves state untouched.
++     */
++    bool request(const std::string &id, const std::vector<std::string> &available) {
++      if (id.empty() || id.size() > 256 || std::find(available.begin(), available.end(), id) == available.end()) { return false; }
++      std::lock_guard lock {mutex_};
++      state_.preferred = id;
++      state_.error.clear();
++      return true;
++    }
++
++    /**
++     * @brief Resolve the pending preference against the capture thread's fresh enumeration.
++     * @param available Fresh identities in capture order.
++     * @param fallback Existing capture selection after upstream reenumeration.
++     * @return Current index of the requested identity, a safe fallback, or -1 if no display exists.
++     */
++    int choose(const std::vector<std::string> &available, int fallback) {
++      std::lock_guard lock {mutex_};
++      if (available.empty()) { return -1; }
++      if (state_.preferred) {
++        const auto found = std::find(available.begin(), available.end(), *state_.preferred);
++        if (found != available.end()) { return static_cast<int>(found - available.begin()); }
++        state_.preferred.reset();
++        state_.error = "The selected display disconnected. Choose another display.";
++      }
++      return std::clamp(fallback, 0, static_cast<int>(available.size()) - 1);
++    }
++
++    /** @brief Publish the display opened by capture without overwriting a newer user choice.
++     * @param id Actual capture display identity.
++     */
++    void activate(const std::string &id) {
++      std::lock_guard lock {mutex_};
++      state_.active = id;
++    }
++    /** @brief Mark capture idle while preserving the next session's preferred display. */
++    void deactivate() {
++      std::lock_guard lock {mutex_};
++      state_.active.reset();
++    }
++    /** @return Whether running capture must reopen on a different requested display. */
++    bool needs_switch() const {
++      std::lock_guard lock {mutex_};
++      return state_.active && state_.preferred && state_.active != state_.preferred;
++    }
++    /** @return A consistent snapshot for authenticated management responses. */
++    DisplaySelectionSnapshot snapshot() const {
++      std::lock_guard lock {mutex_};
++      return state_;
++    }
++  private:
++    mutable std::mutex mutex_;  ///< Serializes management and capture changes.
++    DisplaySelectionSnapshot state_;  ///< Selection state owned by this engine process.
++  };
++
++  /** @return Engine-wide selection state, shared by the active capture pipeline. */
++  inline DisplaySelection &display_selection() {
++    static DisplaySelection selection;
++    return selection;
++  }
++}
+diff --git a/src/video.cpp b/src/video.cpp
+index 843a19a0..98215aca 100644
+--- a/src/video.cpp
++++ b/src/video.cpp
+@@ -35,6 +35,7 @@ extern "C" {
+ #include "platform/common.h"
+ #include "sync.h"
+ #include "video.h"
++#include "display_selection.h"
+ 
+ #ifdef _WIN32
+ extern "C" {
+@@ -1564,6 +1565,7 @@ namespace video {
+     const encoder_t &encoder
+   ) {
+     std::vector<capture_ctx_t> capture_ctxs;
++    auto selection_lifetime = util::fail_guard([]() { display_selection().deactivate(); });
+ 
+     auto fg = util::fail_guard([&]() {
+       capture_ctx_queue->stop();
+@@ -1591,11 +1593,13 @@ namespace video {
+     std::vector<std::string> display_names;
+     int display_p = -1;
+     refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
++    display_p = display_selection().choose(display_names, display_p);
+     auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], capture_ctxs.front().config);
+     if (!disp) {
+       return;
+     }
+     display_wp = disp;
++    display_selection().activate(display_names[display_p]);
+ 
+     constexpr auto capture_buffer_size = 12;
+     std::list<std::shared_ptr<platf::img_t>> imgs(capture_buffer_size);
+@@ -1724,7 +1728,7 @@ namespace video {
+           capture_ctxs.emplace_back(std::move(*capture_ctx_queue->pop()));
+         }
+ 
+-        if (switch_display_event->peek()) {
++        if (switch_display_event->peek() || display_selection().needs_switch()) {
+           artificial_reinit = true;
+           return false;
+         }
+@@ -1780,10 +1784,12 @@ namespace video {
+ 
+               // Refresh display names since a display removal might have caused the reinitialization
+               refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
++              display_p = display_selection().choose(display_names, display_p);
+ 
+               // Process any pending display switch with the new list of displays
+               if (switch_display_event->peek()) {
+                 display_p = std::clamp(*switch_display_event->pop(), 0, static_cast<int>(display_names.size()) - 1);
++        display_selection().request(display_names[display_p], display_names);
+               }
+ 
+               // reset_display() will sleep between retries
+@@ -1797,6 +1803,7 @@ namespace video {
+             }
+ 
+             display_wp = disp;
++            display_selection().activate(display_names[display_p]);
+ 
+             reinit_event.reset();
+             continue;
+@@ -2706,10 +2713,12 @@ namespace video {
+     while (encode_session_ctx_queue.running()) {
+       // Refresh display names since a display removal might have caused the reinitialization
+       refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
++      display_p = display_selection().choose(display_names, display_p);
+ 
+       // Process any pending display switch with the new list of displays
+       if (switch_display_event->peek()) {
+         display_p = std::clamp(*switch_display_event->pop(), 0, static_cast<int>(display_names.size()) - 1);
++        display_selection().request(display_names[display_p], display_names);
+       }
+ 
+       // reset_display() will sleep between retries
+@@ -2723,6 +2732,9 @@ namespace video {
+       return encode_e::error;
+     }
+ 
++    display_selection().activate(display_names[display_p]);
++    auto selection_lifetime = util::fail_guard([]() { display_selection().deactivate(); });
++
+     auto img = disp->alloc_img();
+     if (!img || disp->dummy_img(img.get())) {
+       return encode_e::error;
+@@ -2805,7 +2817,7 @@ namespace video {
+           ++pos;
+         })
+ 
+-        if (switch_display_event->peek()) {
++        if (switch_display_event->peek() || display_selection().needs_switch()) {
+           ec = platf::capture_e::reinit;
+           return false;
+         }

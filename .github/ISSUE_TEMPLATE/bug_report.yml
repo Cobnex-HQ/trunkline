@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible problem without private connection information.
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: What happened?
+      description: Include steps, expected result and actual result. Remove credentials and pairing links.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: App revision, OS versions, Mac/iPhone/iPad model and local Wi-Fi or away access. Do not include device IDs.
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks or logs
+      description: Optional sanitised diagnostics. Never upload passcodes, private keys or connection tickets.

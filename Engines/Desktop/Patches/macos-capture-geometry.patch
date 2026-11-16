@@ -1,0 +1,371 @@
+diff --git a/src/platform/macos/av_video.h b/src/platform/macos/av_video.h
+index 8832f326..23ad059c 100644
+--- a/src/platform/macos/av_video.h
++++ b/src/platform/macos/av_video.h
+@@ -88,4 +88,17 @@ typedef bool (^FrameCallbackBlock)(CMSampleBufferRef);
+  */
+ - (dispatch_semaphore_t)capture:(FrameCallbackBlock)frameCallback;
+ 
++/**
++ * @brief Serial delegate queues retained until the corresponding capture stops.
++ */
++@property (nonatomic, assign) NSMapTable<AVCaptureConnection *, dispatch_queue_t> *captureQueues;
++
++/**
++ * @brief Stop a capture even when no frame arrives and drain its in-flight callback.
++ * @param signal Completion semaphore returned by capture:.
++ * @details Call off the sample-buffer delegate queue. Repeated calls are harmless;
++ * the completion semaphore is signalled exactly once after callback references are released.
++ */
++- (void)cancelCapture:(dispatch_semaphore_t)signal;
++
+ @end
+diff --git a/src/platform/macos/av_video.m b/src/platform/macos/av_video.m
+index 5ad931c5..d021bc33 100644
+--- a/src/platform/macos/av_video.m
++++ b/src/platform/macos/av_video.m
+@@ -9,6 +9,7 @@ @implementation AVVideo
+ 
+ - (id)initWithDisplay:(CGDirectDisplayID)displayID frameRate:(int)frameRate {
+   self = [super init];
++  if (!self) { return nil; }
+ 
+   CGDisplayModeRef mode = CGDisplayCopyDisplayMode(displayID);
+   if (!mode) {
+@@ -22,9 +23,11 @@ - (id)initWithDisplay:(CGDirectDisplayID)displayID frameRate:(int)frameRate {
+   self.frameHeight = (int) CGDisplayModeGetPixelHeight(mode);
+   self.minFrameDuration = CMTimeMake(1, frameRate);
+   self.session = [[AVCaptureSession alloc] init];
+-  self.videoOutputs = [[NSMapTable alloc] init];
+-  self.captureCallbacks = [[NSMapTable alloc] init];
+-  self.captureSignals = [[NSMapTable alloc] init];
++  self.videoOutputs = [[NSMapTable strongToStrongObjectsMapTable] retain];
++  self.captureCallbacks = [[NSMapTable strongToStrongObjectsMapTable] retain];
++  self.captureSignals = [[NSMapTable strongToStrongObjectsMapTable] retain];
++
++  self.captureQueues = [[NSMapTable strongToStrongObjectsMapTable] retain];
+ 
+   CFRelease(mode);
+ 
+@@ -35,19 +38,23 @@ - (id)initWithDisplay:(CGDirectDisplayID)displayID frameRate:(int)frameRate {
+     [self.session addInput:screenInput];
+   } else {
+     [screenInput release];
++    [self release];
+     return nil;
+   }
+ 
++  [screenInput release];
+   [self.session startRunning];
+ 
+   return self;
+ }
+ 
+ - (void)dealloc {
++  [self.session stopRunning];
+   [self.videoOutputs release];
+   [self.captureCallbacks release];
+   [self.captureSignals release];
+-  [self.session stopRunning];
++  [self.captureQueues release];
++  [self.session release];
+   [super dealloc];
+ }
+ 
+@@ -71,46 +78,96 @@ - (dispatch_semaphore_t)capture:(FrameCallbackBlock)frameCallback {
+     dispatch_queue_t recordingQueue = dispatch_queue_create("videoCaptureQueue", qos);
+     [videoOutput setSampleBufferDelegate:self queue:recordingQueue];
+ 
+-    [self.session stopRunning];
+-
+     if ([self.session canAddOutput:videoOutput]) {
+       [self.session addOutput:videoOutput];
+     } else {
++      [videoOutput setSampleBufferDelegate:nil queue:nil];
++      dispatch_release(recordingQueue);
+       [videoOutput release];
+       return nil;
+     }
+ 
+     AVCaptureConnection *videoConnection = [videoOutput connectionWithMediaType:AVMediaTypeVideo];
++    if (!videoConnection) {
++      [videoOutput setSampleBufferDelegate:nil queue:nil];
++      [self.session removeOutput:videoOutput];
++      dispatch_release(recordingQueue);
++      [videoOutput release];
++      return nil;
++    }
+     dispatch_semaphore_t signal = dispatch_semaphore_create(0);
+ 
+     [self.videoOutputs setObject:videoOutput forKey:videoConnection];
+-    [self.captureCallbacks setObject:frameCallback forKey:videoConnection];
++    FrameCallbackBlock retainedCallback = [frameCallback copy];
++    [self.captureCallbacks setObject:retainedCallback forKey:videoConnection];
++    [retainedCallback release];
++    [self.captureQueues setObject:recordingQueue forKey:videoConnection];
+     [self.captureSignals setObject:signal forKey:videoConnection];
+ 
+-    [self.session startRunning];
+-
++    [videoOutput release];
++    dispatch_release(recordingQueue);
+     return signal;
+   }
+ }
+ 
++- (void)cancelCapture:(dispatch_semaphore_t)signal {
++  AVCaptureConnection *connection = nil;
++  AVCaptureVideoDataOutput *output = nil;
++  dispatch_queue_t queue = nil;
++  @synchronized(self) {
++    for (AVCaptureConnection *candidate in self.captureSignals) {
++      if ([self.captureSignals objectForKey:candidate] == signal) {
++        if (![self.captureCallbacks objectForKey:candidate]) { return; }
++        connection = [candidate retain];
++        output = [[self.videoOutputs objectForKey:candidate] retain];
++        queue = [self.captureQueues objectForKey:candidate];
++        dispatch_retain(queue);
++        // Prevent queued callbacks from acquiring another reference to caller state.
++        [self.captureCallbacks removeObjectForKey:candidate];
++        break;
++      }
++    }
++  }
++  if (!connection) { return; }
++  [output setSampleBufferDelegate:nil queue:nil];
++  // No session lock is held while the in-flight callback finishes.
++  dispatch_sync(queue, ^{});
++  @synchronized(self) {
++    [self.session removeOutput:output];
++    [self.videoOutputs removeObjectForKey:connection];
++    [self.captureSignals removeObjectForKey:connection];
++    [self.captureQueues removeObjectForKey:connection];
++  }
++  dispatch_semaphore_signal(signal);
++  dispatch_release(queue);
++  [output release];
++  [connection release];
++}
++
+ - (void)captureOutput:(AVCaptureOutput *)captureOutput
+   didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+          fromConnection:(AVCaptureConnection *)connection {
+-  FrameCallbackBlock callback = [self.captureCallbacks objectForKey:connection];
+-
+-  if (callback != nil) {
+-    if (!callback(sampleBuffer)) {
+-      @synchronized(self) {
+-        [self.session stopRunning];
+-        [self.captureCallbacks removeObjectForKey:connection];
+-        [self.session removeOutput:[self.videoOutputs objectForKey:connection]];
+-        [self.videoOutputs removeObjectForKey:connection];
+-        dispatch_semaphore_signal([self.captureSignals objectForKey:connection]);
+-        [self.captureSignals removeObjectForKey:connection];
+-        [self.session startRunning];
+-      }
++  FrameCallbackBlock callback = nil;
++  dispatch_semaphore_t signal = nil;
++  @synchronized(self) {
++    callback = [[self.captureCallbacks objectForKey:connection] copy];
++    if (callback) {
++      signal = [self.captureSignals objectForKey:connection];
++      dispatch_retain(signal);
+     }
+   }
++  if (!callback) { return; }
++  const bool keepRunning = callback(sampleBuffer);
++  [callback release];
++  if (!keepRunning) {
++    // Drain from another queue; waiting on this delegate queue would deadlock.
++    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
++      [self cancelCapture:signal];
++      dispatch_release(signal);
++    });
++  } else {
++    dispatch_release(signal);
++  }
+ }
+ 
+ @end
+diff --git a/src/platform/macos/display.mm b/src/platform/macos/display.mm
+index d5fe3d02..30ca13b4 100644
+--- a/src/platform/macos/display.mm
++++ b/src/platform/macos/display.mm
+@@ -10,6 +10,9 @@
+ #include <string_view>
+ 
+ // local includes
++#include "display_geometry.h"
++#include "src/display_selection.h"
++#include "display_change_observer.h"
+ #include "src/config.h"
+ #include "src/display_device.h"
+ #include "src/logging.h"
+@@ -60,6 +63,7 @@ OSType videotoolbox_pixel_format(const video::config_t &config) {
+   struct av_display_t: public display_t {
+     AVVideo *av_capture {};  ///< AV capture.
+     CGDirectDisplayID display_id {};  ///< Display ID.
++    std::unique_ptr<DisplayChangeObserver> topology;  ///< Geometry invalidation for this capture instance.
+     std::unique_ptr<display_device::DisplayPowerGuardInterface> display_power_guard;  ///< Display power guard.
+ 
+     ~av_display_t() override {
+@@ -67,7 +71,9 @@ OSType videotoolbox_pixel_format(const video::config_t &config) {
+     }
+ 
+     capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const pull_free_image_cb_t &pull_free_image_cb, bool *cursor) override {
++      if ((topology && topology->invalidated()) || video::display_selection().needs_switch()) { return capture_e::reinit; }
+       auto signal = [av_capture capture:^(CMSampleBufferRef sampleBuffer) {
++        if ((topology && topology->invalidated()) || video::display_selection().needs_switch()) { return false; }
+         auto new_sample_buffer = std::make_shared<av_sample_buf_t>(sampleBuffer);
+         auto new_pixel_buffer = std::make_shared<av_pixel_buf_t>(new_sample_buffer->buf);
+ 
+@@ -105,10 +111,14 @@ capture_e capture(const push_captured_image_cb_t &push_captured_image_cb, const
+         return true;
+       }];
+ 
+-      // FIXME: We should time out if an image isn't returned for a while
+-      dispatch_semaphore_wait(signal, DISPATCH_TIME_FOREVER);
+-
+-      return capture_e::ok;
++      if (!signal) { return capture_e::error; }
++      // A disconnected display may never deliver the next frame. Poll only the
++      // invalidation flag; the AV layer drains callbacks before signalling completion.
++      while (dispatch_semaphore_wait(signal, dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC)) != 0) {
++        if ((topology && topology->invalidated()) || video::display_selection().needs_switch()) { [av_capture cancelCapture:signal]; }
++      }
++      dispatch_release(signal);
++      return ((topology && topology->invalidated()) || video::display_selection().needs_switch()) ? capture_e::reinit : capture_e::ok;
+     }
+ 
+     /**
+@@ -184,8 +194,14 @@ int dummy_img(img_t *img) override {
+         return false;
+       }];
+ 
+-      dispatch_semaphore_wait(signal, DISPATCH_TIME_FOREVER);
+-
++      if (!signal) { return 1; }
++      if (dispatch_semaphore_wait(signal, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) {
++        [av_capture cancelCapture:signal];
++        dispatch_semaphore_wait(signal, DISPATCH_TIME_FOREVER);
++        dispatch_release(signal);
++        return 1;
++      }
++      dispatch_release(signal);
+       return 0;
+     }
+ 
+@@ -265,11 +281,25 @@ static void setPixelFormat(void *display, OSType pixelFormat) {
+       return nullptr;
+     }
+ 
++    display->topology = std::make_unique<DisplayChangeObserver>();
++    if (!display->topology->registered()) {
++      BOOST_LOG(error) << "Could not observe display geometry changes.";
++      return nullptr;
++    }
+     display->width = display->av_capture.frameWidth;
+     display->height = display->av_capture.frameHeight;
+     // We also need set env_width and env_height for absolute mouse coordinates
+     display->env_width = display->width;
+     display->env_height = display->height;
++    std::array<CGDirectDisplayID, 32> active_ids {};
++    uint32_t active_count = 0;
++    std::vector<CGRect> active_bounds;
++    if (CGGetActiveDisplayList(active_ids.size(), active_ids.data(), &active_count) == kCGErrorSuccess) {
++      active_bounds.reserve(active_count);
++      for (uint32_t i = 0; i < active_count; ++i) { active_bounds.push_back(CGDisplayBounds(active_ids[i])); }
++    }
++    apply_macos_input_geometry(*display, CGDisplayBounds(display->display_id), active_bounds);
++
+ 
+     if (hwdevice_type == platf::mem_type_e::videotoolbox) {
+       const auto pixel_format {videotoolbox_pixel_format(config)};
+diff --git a/src/platform/macos/display_change_observer.h b/src/platform/macos/display_change_observer.h
+new file mode 100644
+index 00000000..8d75012c
+--- /dev/null
++++ b/src/platform/macos/display_change_observer.h
+@@ -0,0 +1,40 @@
++/**
++ * @file src/platform/macos/display_change_observer.h
++ * @brief Invalidate a capture instance when logical display geometry changes.
++ */
++#pragma once
++#include <CoreGraphics/CoreGraphics.h>
++#include <atomic>
++
++namespace platf {
++  /** @brief Own one CoreGraphics observer for a capture instance's geometry. */
++  class DisplayChangeObserver {
++  public:
++    /** @brief Register for completed display configuration changes. */
++    DisplayChangeObserver(): registered_ {CGDisplayRegisterReconfigurationCallback(changed, this) == kCGErrorSuccess} {}
++    /** @brief Remove the callback before its state is destroyed. */
++    ~DisplayChangeObserver() {
++      if (registered_) { CGDisplayRemoveReconfigurationCallback(changed, this); }
++    }
++    DisplayChangeObserver(const DisplayChangeObserver &) = delete;
++    DisplayChangeObserver &operator=(const DisplayChangeObserver &) = delete;
++    /** @return Whether CoreGraphics accepted this observer. */
++    bool registered() const { return registered_; }
++    /** @return Whether geometry changed since this capture instance was created. */
++    bool invalidated() const { return invalidated_.load(); }
++  private:
++    /**
++     * @brief Mark geometry stale after a completed change; never call AVFoundation here.
++     * @param display Changed display, unused because all monitors affect the desktop origin.
++     * @param flags CoreGraphics display-change flags.
++     * @param context Owning observer.
++     */
++    static void changed([[maybe_unused]] CGDirectDisplayID display, CGDisplayChangeSummaryFlags flags, void *context) {
++      if (!(flags & kCGDisplayBeginConfigurationFlag)) {
++        static_cast<DisplayChangeObserver *>(context)->invalidated_.store(true);
++      }
++    }
++    bool registered_;  ///< Whether removal is required.
++    std::atomic<bool> invalidated_ {false};  ///< Read by capture and its delegate queue.
++  };
++}
+diff --git a/src/platform/macos/display_geometry.h b/src/platform/macos/display_geometry.h
+new file mode 100644
+index 00000000..4f292938
+--- /dev/null
++++ b/src/platform/macos/display_geometry.h
+@@ -0,0 +1,36 @@
++/**
++ * @file src/platform/macos/display_geometry.h
++ * @brief Capture geometry in the logical desktop coordinate space used by CoreGraphics input.
++ */
++#pragma once
++#include <CoreGraphics/CoreGraphics.h>
++#include <cmath>
++#include <vector>
++
++namespace platf {
++  /**
++   * @brief Populate input metadata for a captured monitor within the active desktop.
++   * @param display Capture descriptor with native pixel width and height already populated.
++   * @param captured Logical CoreGraphics bounds of the captured monitor.
++   * @param screens Logical bounds of all active monitors; empty enumeration uses the captured monitor.
++   * @details Offset fields are logical here because client_to_touchport adds them after dividing
++   * native capture coordinates by scalar_tpcoords. Environment pixel dimensions use the captured
++   * monitor's scale; the explicit logical environment dimensions are authoritative for mouse input.
++   */
++  template<class Display>
++  void apply_macos_input_geometry(Display &display, CGRect captured, const std::vector<CGRect> &screens) {
++    if (captured.size.width < 1 || captured.size.height < 1) { return; }
++    auto desktop = captured;
++    for (const auto &screen : screens) {
++      if (screen.size.width >= 1 && screen.size.height >= 1) { desktop = CGRectUnion(desktop, screen); }
++    }
++    display.offset_x = static_cast<int>(std::lround(captured.origin.x - desktop.origin.x));
++    display.offset_y = static_cast<int>(std::lround(captured.origin.y - desktop.origin.y));
++    display.logical_width = static_cast<int>(std::lround(captured.size.width));
++    display.logical_height = static_cast<int>(std::lround(captured.size.height));
++    display.env_logical_width = static_cast<int>(std::lround(desktop.size.width));
++    display.env_logical_height = static_cast<int>(std::lround(desktop.size.height));
++    display.env_width = static_cast<int>(std::lround(desktop.size.width * display.width / captured.size.width));
++    display.env_height = static_cast<int>(std::lround(desktop.size.height * display.height / captured.size.height));
++  }
++}

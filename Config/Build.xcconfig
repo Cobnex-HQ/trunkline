@@ -1,0 +1,3 @@
+// Generated paths and personal signing settings never enter source control.
+#include? "Generated.xcconfig"
+#include? "Local.xcconfig"

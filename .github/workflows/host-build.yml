@@ -1,0 +1,17 @@
+name: Mac development build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+jobs:
+  host:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and verify bundled Mac app
+        run: ./Scripts/setup-mac.sh build

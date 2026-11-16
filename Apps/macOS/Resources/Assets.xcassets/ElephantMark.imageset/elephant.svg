@@ -1,0 +1,36 @@
+
+<svg aria-labelledby="title desc" height="1024" role="img" viewBox="160 152 920 920" width="1024" xmlns="http://www.w3.org/2000/svg">
+    <title id="title">Trunkline — Glacier Fold</title>
+    <desc id="desc">The Glacier Fold elephant in ivory paper and glacier blue on a midnight-blue app tile.</desc>
+    <defs>
+        <linearGradient id="midnight" x1="0" y1="0" x2=".8" y2="1">
+            <stop stop-color="#163b80"></stop>
+            <stop offset=".4" stop-color="#062361"></stop>
+            <stop offset="1" stop-color="#001347"></stop>
+        </linearGradient>
+        <linearGradient id="rim" x1="0" y1="0" x2=".5" y2="1">
+            <stop stop-color="#5679af" stop-opacity=".38"></stop>
+            <stop offset=".5" stop-color="#163b80" stop-opacity=".1"></stop>
+            <stop offset="1" stop-color="#000a26" stop-opacity=".5"></stop>
+        </linearGradient>
+        <linearGradient id="paper" x1="0" y1="0" x2=".7" y2="1">
+            <stop stop-color="#fffaf0"></stop>
+            <stop offset="1" stop-color="#e6e0d2"></stop>
+        </linearGradient>
+        <linearGradient id="ear-paper" x1="0" y1="0" x2="1" y2=".8">
+            <stop stop-color="#fffaf0"></stop>
+            <stop offset="1" stop-color="#ece5d8"></stop>
+        </linearGradient>
+        <linearGradient id="ice" x1="0" y1="0" x2=".5" y2="1">
+            <stop stop-color="#8eafc4"></stop>
+            <stop offset="1" stop-color="#c6e0ed"></stop>
+        </linearGradient>
+    </defs>
+    <g id="elephant">
+        <path id="rear-leg" fill="url(#paper)" d="M412 619 278 709 196 985 375 985 425 846 587 731Z"></path>
+        <path id="glacier-leg" fill="url(#ice)" d="M587 731 506 985 749 985 699 822 758 650Z"></path>
+        <path id="head-and-trunk" fill="url(#paper)" d="M587 731 714 388 798 389 881 469 928 451 942 296 1052 240 998 342 1023 486 902 622 758 650Z"></path>
+        <path id="folded-ear" fill="url(#ear-paper)" d="M273 523 466 319 714 388 587 731Z"></path>
+        <path id="fold-highlight" fill="none" stroke="#fffaf0" stroke-opacity=".65" stroke-width="2" d="M273 523 466 319 714 388 587 731"></path>
+    </g>
+</svg>

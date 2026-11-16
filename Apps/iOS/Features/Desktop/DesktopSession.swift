@@ -1,0 +1,420 @@
+#if canImport(TrunklineCore)
+import TrunklineCore
+#endif
+import SwiftUI
+import CryptoKit
+
+@MainActor
+final class DesktopSession: ObservableObject {
+    struct Application: Identifiable { let id: String; let name: String }
+    @Published var apps: [Application] = []
+    @Published var busy = false
+    @Published var paired = false
+    @Published var hostReady = false
+    @Published var pin: String?
+    @Published var error: String?
+    @Published var stream: StreamConfiguration?
+    @Published var presenting = false
+    @Published var profile: StreamProfile = .responsive
+    @Published var inputMode: DesktopInputMode = .directTouch
+    @Published var pacing: StreamPacingMode = .lowLatency
+    @Published var stats = false
+    private(set) var engine: TrunklineStream
+    private let engineFactory: () -> TrunklineStream
+    private let discoveryTimeout: Duration
+    private let pairingTimeout: Duration
+    private var deadline: Task<Void, Never>?
+    private var operationID: UUID?
+    private var address = ""
+    private var certificateKey = ""
+    private var closed = false
+    private var openRequested = false
+    private var approvePairing: ((DesktopPairRequest) -> Void)?
+    var display = DesktopDisplay.fallback
+    init(discoveryTimeout: Duration = .seconds(15), pairingTimeout: Duration = .seconds(30),
+         engineFactory: @escaping () -> TrunklineStream = { TrunklineStream() }) {
+        self.discoveryTimeout = discoveryTimeout; self.pairingTimeout = pairingTimeout
+        self.engineFactory = engineFactory; self.engine = engineFactory()
+    }
+    func open(pairingLink: String, approvePairing: @escaping (DesktopPairRequest) -> Void) {
+        guard address.isEmpty else { return }
+        do {
+            let pairing = try PairingDetails.parse(pairingLink)
+            address = pairing.host.contains(":") ? "[\(pairing.host)]:47989" : "\(pairing.host):47989"
+            certificateKey = DesktopTrustKey.current(pairing)
+            if SecretStore.read(certificateKey) == nil, let certificate = SecretStore.read(DesktopTrustKey.legacy(pairing)) {
+                try SecretStore.write(certificate, key: certificateKey)
+            }
+            self.approvePairing = approvePairing
+            bindEngineCallbacks()
+            refresh()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func bindEngineCallbacks() {
+        let engine = self.engine
+        engine.pairingCode = { [weak self, weak engine] code in
+            guard let self, let engine, self.engine === engine, !self.closed else { return }
+            self.pin = code
+            do { self.approvePairing?(try DesktopPairRequest(pin: code, token: engine.pairingToken)) }
+            catch { self.receivePairingFailure(error.localizedDescription, token: engine.pairingToken) }
+        }
+        engine.paired = { [weak self, weak engine] certificate in
+            guard let self, let engine, self.engine === engine, !self.closed else { return }
+            self.stopDeadline()
+            self.pin = nil; self.busy = false
+            do { try SecretStore.write(certificate, key: self.certificateKey); self.refresh() }
+            catch { self.openRequested = false; self.error = error.localizedDescription }
+        }
+        engine.failed = { [weak self, weak engine] message in
+            guard let self, let engine, self.engine === engine, !self.closed else { return }
+            self.resetPreparation(error: message)
+        }
+    }
+    func refresh() {
+        guard !busy, !closed, !presenting, !address.isEmpty else { return }; busy = true; hostReady = false; error = nil
+        let id = armDeadline(discoveryTimeout, message: "Desktop didn’t respond. Check that Desktop is running on your Mac, then retry.")
+        let engine = self.engine
+        let certificate = SecretStore.read(certificateKey)
+        paired = certificate != nil
+        engine.loadHost(address, certificate: certificate) { [weak self, weak engine] applications, error in
+            Task { @MainActor in
+                guard let self, let engine, !self.closed, self.engine === engine, self.operationID == id else { return }
+                self.stopDeadline(); self.busy = false
+                if let error { self.error = error; self.openRequested = false; return }
+                #if DEBUG
+                if self.address.hasPrefix("127.0.0.1:") { print("TRUNKLINE_REMOTE desktop_host_ready"); fflush(stdout) }
+                #endif
+                self.hostReady = true
+                self.apps = (applications ?? []).compactMap { item in
+                    guard let id = item["id"], let name = item["name"] else { return nil }
+                    return Application(id: id, name: name)
+                }
+                if self.openRequested { self.openDesktop() }
+            }
+        }
+    }
+
+    func openDesktop() {
+        guard !busy, !closed else { return }
+        openRequested = true
+        if !hostReady { refresh() }
+        else if !paired { pair() }
+        else if let desktop = apps.first(where: { $0.name == "Desktop" }) {
+            openRequested = false; launch(desktop)
+        } else { openRequested = false; error = "No Desktop is available. Restart desktop in the Mac app, then retry." }
+    }
+    func pair() {
+        guard !busy, !closed, hostReady else { return }; busy = true; error = nil
+        _ = armDeadline(pairingTimeout, message: "Desktop pairing timed out. Check the Mac connection, then retry.")
+        engine.pair()
+    }
+    func receivePairingFailure(_ message: String, token: String?) {
+        guard !closed, pin != nil, token == engine.pairingToken else { return }
+        resetPreparation(error: message)
+    }
+    func cancelPreparation() { guard busy, !presenting else { return }; resetPreparation(error: nil) }
+    private func resetPreparation(error: String?) {
+        stopDeadline(); engine.cancel(); engine = engineFactory(); bindEngineCallbacks()
+        busy = false; pin = nil; hostReady = false; openRequested = false; apps = []
+        self.error = error
+    }
+    @discardableResult private func armDeadline(_ duration: Duration, message: String) -> UUID {
+        stopDeadline()
+        let id = UUID(); operationID = id
+        deadline = Task { [weak self] in
+            do { try await Task.sleep(for: duration) } catch { return }
+            guard let self, self.operationID == id, !self.closed else { return }
+            self.resetPreparation(error: message)
+        }
+        return id
+    }
+    private func stopDeadline() { deadline?.cancel(); deadline = nil; operationID = nil }
+    func forget() { guard !busy else { return }; SecretStore.delete(certificateKey); paired = false; apps = []; refresh() }
+    func launch(_ application: Application) {
+        guard paired, !busy else { return }
+        let geometry = DesktopStreamGeometry.size(
+            maximumWidth: profile.maximumWidth,
+            displayWidth: display.width,
+            displayHeight: display.height
+        )
+        let fps = StreamFrameRatePolicy.targetFramesPerSecond(
+            for: profile,
+            preStreamDisplayMaximum: UIScreen.main.maximumFramesPerSecond
+        )
+        guard let config = engine.configuration(forApp: application.id, title: application.name,
+            width: Int32(geometry.width), height: Int32(geometry.height), fps: Int32(fps), bitrate: Int32(profile.bitrate / 1000), directTouch: inputMode.usesAbsolutePointer, framePacing: pacing.usesFramePacing, stats: stats) else {
+            error = "Refresh your desktop connection before starting the desktop."; return
+        }
+        stream = config; presenting = true
+    }
+    func close() {
+        closed = true; stopDeadline(); presenting = false; stream = nil; approvePairing = nil; engine.cancel()
+        busy = false; pin = nil; hostReady = false; apps = []; openRequested = false
+    }
+}
+
+struct DesktopView: View {
+    @ObservedObject var model: ConnectionModel
+    @StateObject private var desktop = DesktopSession()
+    @ObservedObject private var controls: ClientControls
+    init(model: ConnectionModel) { self.model = model; self.controls = model.controls }
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var settings = false
+    @State private var disconnect = false
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(.secondary)
+                            .frame(width: 36).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(model.name).font(.callout.weight(.semibold))
+                            HStack(spacing: 5) {
+                                Circle().fill(desktop.hostReady ? Color.green : Color.orange).frame(width: 5, height: 5)
+                                Text(desktop.hostReady ? "Ready" : desktop.busy ? "Preparing" : desktop.error == nil ? "Not connected" : "Unavailable")
+                                Text("·").foregroundStyle(.tertiary)
+                                Text(model.useAwayAccess ? "Away" : "Local Wi-Fi")
+                            }.font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        if let latency = model.roundTripMS {
+                            Text("\(latency) ms").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 4)
+                    Button {
+                        desktop.display = controls.snapshot?.desktopDisplays?.selectedDisplay?.geometry ?? model.desktopDisplay
+                        desktop.openDesktop()
+                    } label: {
+                        HStack {
+                            Label(desktop.pin == nil ? "Open desktop" : "Pairing…", systemImage: "arrow.up.right.square")
+                            Spacer()
+                            if desktop.busy { GlacierLoadingIndicator(size: 28) }
+                        }.frame(minHeight: 32)
+                    }.disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
+                    if desktop.busy { Button("Cancel", role: .cancel) { desktop.cancelPreparation() } }
+                }
+                if let error = desktop.error {
+                    Section { Text(error).foregroundStyle(.orange); Button("Retry") { desktop.openDesktop() }.disabled(desktop.busy) }
+                }
+                if controls.snapshot?.desktopDisplays?.isAvailable == true {
+                    Section("Display") { DesktopDisplayMenu(controls: controls) }
+                }
+                Section("Stream") {
+                    Picker("Input", selection: $desktop.inputMode) { ForEach(DesktopInputMode.allCases) { Text($0.title).tag($0) } }
+                    Picker("Quality", selection: $desktop.profile) { ForEach(StreamProfile.allCases) { Text($0.title).tag($0) } }
+                    LabeledContent("Connection", value: model.useAwayAccess ? "Direct · Away" : "Local Wi-Fi")
+                }
+                Section {
+                    Label("Pinch to zoom. Use two fingers to pan when zoomed.", systemImage: "hand.pinch")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section { AppearancePicker() }
+            }
+            .nativeWorkspaceStyle()
+            .frame(maxWidth: 780).frame(maxWidth: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Desktop")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { MacSwitchMenu(model: model) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Stream settings", systemImage: "slider.horizontal.3") { settings = true }
+                        Button("Refresh", systemImage: "arrow.clockwise") { desktop.refresh() }
+                        Button("Disconnect", systemImage: "power", role: .destructive) { disconnect = true }
+                    } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Desktop options")
+                }
+            }
+            .task {
+                model.onDesktopError = { [weak desktop] message, token in desktop?.receivePairingFailure(message, token: token) }
+                desktop.display = model.desktopDisplay
+                desktop.open(pairingLink: model.sessionPairingLink.isEmpty ? model.pairingText : model.sessionPairingLink) { model.send(.pairDesktop($0)) }
+            }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    if !desktop.presenting { controls.refresh(automatically: true) }
+                    do { try await Task.sleep(for: .seconds(5)) } catch { break }
+                }
+            }
+            .onChange(of: controls.snapshot?.desktopDisplays) { _, selection in
+                desktop.display = selection?.selectedDisplay?.geometry ?? model.desktopDisplay
+            }
+            .onChange(of: scenePhase) { _, phase in if phase == .active && !desktop.presenting && desktop.pin == nil { desktop.refresh() } }
+            .onChange(of: model.phase) { _, phase in if phase != .connected { desktop.close() } }
+            .onChange(of: model.desktopDisplay) { _, display in desktop.display = display }
+            .confirmationDialog("Disconnect from your Mac?", isPresented: $disconnect, titleVisibility: .visible) {
+                Button("Disconnect", role: .destructive) { model.disconnect() }
+            }
+            .sheet(isPresented: $settings) {
+                NavigationStack {
+                    Form {
+                        Section {
+                            Picker("Motion", selection: $desktop.pacing) { ForEach(StreamPacingMode.allCases) { Text($0.title).tag($0) } }
+                            Toggle("Statistics", isOn: $desktop.stats)
+                        }
+                        Section { Text(desktop.inputMode.detail).foregroundStyle(.secondary) }
+                    }.navigationTitle("Stream settings").navigationBarTitleDisplayMode(.inline)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { settings = false } } }
+                }.presentationDetents([.medium, .large])
+            }
+            .fullScreenCover(isPresented: $desktop.presenting, onDismiss: { desktop.stream = nil }) {
+                if let config = desktop.stream { DesktopScreen(engine: desktop.engine, config: config, model: model) { desktop.presenting = false } }
+            }
+        }
+    }
+}
+
+private struct DesktopSurface: UIViewControllerRepresentable {
+    let engine: TrunklineStream
+    let config: StreamConfiguration
+    let close: () -> Void
+    @Binding var controller: UIViewController?
+    func makeUIViewController(context: Context) -> UIViewController {
+        let view = engine.streamController(withConfig: config, close: close)
+        DispatchQueue.main.async { controller = view }
+        return view
+    }
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: ()) {
+        uiViewController.willMove(toParent: nil)
+    }
+}
+
+private struct DesktopScreen: View {
+    let engine: TrunklineStream
+    let config: StreamConfiguration
+    @ObservedObject var model: ConnectionModel
+    let close: () -> Void
+    @SwiftUI.State private var showControls = false
+    @SwiftUI.State private var toolbarVisible = true
+    @SwiftUI.State private var controller: UIViewController?
+    @SwiftUI.State private var paste = false
+    @SwiftUI.State private var text = ""
+    @SwiftUI.State private var pendingMonitorID: String?
+    @SwiftUI.State private var monitorSwitching = false
+    var body: some View {
+        VStack(spacing: 0) {
+            DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
+                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+                .allowsHitTesting(pendingMonitorID == nil && !monitorSwitching)
+                .overlay {
+                    if pendingMonitorID != nil || monitorSwitching {
+                        ProgressView("Switching display…").padding(16).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            if toolbarVisible {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        leadingTools
+                        Divider().frame(height: 24)
+                        zoomTools
+                        Divider().frame(height: 24)
+                        trailingTools
+                    }.fixedSize(horizontal: true, vertical: false)
+                    HStack(spacing: 4) {
+                        leadingTools
+                        Menu { zoomCommands } label: {
+                            Image(systemName: "plus.magnifyingglass").frame(width: 44, height: 44)
+                        }.accessibilityLabel("Zoom")
+                        trailingTools
+                    }
+                }
+                .frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, 4)
+                .background(.regularMaterial)
+            } else {
+                Button { toolbarVisible = true } label: { Label("Controls", systemImage: "chevron.up").frame(minHeight: 44) }
+                    .frame(maxWidth: .infinity).background(.regularMaterial)
+            }
+        }
+        .background(.black)
+        .sheet(isPresented: $showControls) {
+            ControlsView(controls: model.controls, files: model.files, dismissible: true)
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
+        .onChange(of: controller) { _, _ in updateDisplayGeometry(model.controls.snapshot) }
+        .onReceive(model.controls.$snapshot) { snapshot in updateDisplayGeometry(snapshot) }
+        .onReceive(model.controls.$error) { error in
+            if error != nil { pendingMonitorID = nil }
+        }
+        .persistentSystemOverlays(.hidden)
+        .sheet(isPresented: $paste) {
+            NavigationStack {
+                Form {
+                    TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 180)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to send")
+                    PasteButton(payloadType: String.self) { text = $0.joined(separator: "\n") }
+                    Text("Review commands before sending. Newlines may execute them on your Mac.").font(.footnote).foregroundStyle(.secondary)
+                }.navigationTitle("Send text")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { text = ""; paste = false } }
+                        ToolbarItem(placement: .confirmationAction) { Button("Send") { engine.sendText(text); text = ""; paste = false }.disabled(text.isEmpty || text.utf8.count > 65536) }
+                    }
+            }
+        }
+    }
+    private func updateDisplayGeometry(_ snapshot: MacControlSnapshot?) {
+        let selection = snapshot?.desktopDisplays
+        monitorSwitching = selection?.switching == true
+        guard !monitorSwitching, let controller else { return }
+        if let pending = pendingMonitorID {
+            guard selection?.activeID == pending || selection?.error != nil else { return }
+            pendingMonitorID = nil
+        }
+        let display = selection?.displays.first(where: { $0.id == selection?.activeID })?.geometry
+            ?? selection?.selectedDisplay?.geometry ?? model.desktopDisplay
+        engine.updateDisplay(in: controller, width: Int32(display.width), height: Int32(display.height))
+    }
+    private var leadingTools: some View {
+        Group {
+            tool("Close", "xmark", action: close)
+            tool("Keyboard", "keyboard") { if let controller { engine.showKeyboard(in: controller) } }
+        }
+    }
+    private var zoomTools: some View {
+        Group {
+            tool("Zoom out", "minus.magnifyingglass") { zoom(1 / 1.4) }
+            tool("Fit", "arrow.down.right.and.arrow.up.left") { zoom(0) }
+            tool("Zoom in", "plus.magnifyingglass") { zoom(1.4) }
+        }
+    }
+    private var zoomCommands: some View {
+        Group {
+            Button("Zoom in", systemImage: "plus.magnifyingglass") { zoom(1.4) }
+            Button("Zoom out", systemImage: "minus.magnifyingglass") { zoom(1 / 1.4) }
+            Button("Fit desktop", systemImage: "arrow.down.right.and.arrow.up.left") { zoom(0) }
+        }
+    }
+    private func zoom(_ factor: CGFloat) {
+        guard let controller else { return }
+        if factor == 0 { engine.resetZoom(in: controller) }
+        else { engine.changeZoom(in: controller, factor: factor) }
+    }
+    private var trailingTools: some View {
+        Group {
+        Menu {
+            key("Escape", 0x1B); key("Tab", 0x09)
+            key("Copy", 0x43, 0x08); key("Paste", 0x56, 0x08); key("Cut", 0x58, 0x08)
+            key("Undo", 0x5A, 0x08); key("Select all", 0x41, 0x08); key("Save", 0x53, 0x08)
+            key("Switch app", 0x09, 0x08); key("Spotlight", 0x20, 0x08)
+            key("Interrupt", 0x43, 0x02)
+            Menu("Function keys") { ForEach(1...12, id: \.self) { number in key("F\(number)", UInt16(0x6F + number)) } }
+            Menu("Navigation") {
+                key("Home", 0x24); key("End", 0x23); key("Page up", 0x21); key("Page down", 0x22)
+                key("Left", 0x25); key("Up", 0x26); key("Right", 0x27); key("Down", 0x28)
+            }
+            Button("Send text…") { paste = true }
+        } label: { Image(systemName: "command").frame(width: 44, height: 44) }.accessibilityLabel("Shortcuts")
+            DesktopDisplayMenu(controls: model.controls, compact: true) { pendingMonitorID = $0 }
+            tool("Mac controls", "slider.horizontal.3") { showControls = true }
+            tool("Hide toolbar", "chevron.down") { toolbarVisible = false }
+        }
+    }
+    private func tool(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).frame(width: 44, height: 44) }.accessibilityLabel(title)
+    }
+    private func key(_ title: String, _ code: UInt16, _ modifiers: UInt8 = 0) -> some View {
+        Button(title) { engine.sendKey(code, modifiers: modifiers) }
+    }
+
+}

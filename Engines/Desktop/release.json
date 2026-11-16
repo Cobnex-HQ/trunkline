@@ -1,0 +1,7 @@
+{
+  "version": "2026.1116.1",
+  "channel": "local-candidate",
+  "upstream_repository": "https://github.com/LizardByte/Sunshine",
+  "upstream_revision": "63d35f702ee9e362e43263742981836ec0710384",
+  "input_revision": "53e1a949fc0784af716b782ddfa6c647cafd1f05"
+}

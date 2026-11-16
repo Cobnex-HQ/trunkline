@@ -1,0 +1,247 @@
+{
+  "repository": "https://github.com/migueldeicaza/SwiftTerm",
+  "revision": "b1262db5b6bea699a8260a8c66999436c508ca56",
+  "version": "v1.11.2",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha": "e600db05b773f0a7caf4563c81e033de2377d18f",
+      "size": 1336
+    },
+    {
+      "path": "Package.swift",
+      "sha": "a33bbc6495fb643cdc1a8a96b93f5f63c9a6fc9b",
+      "size": 3290
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/AppleTerminalView.swift",
+      "sha": "d2c1e30bc88a1966bdca592b14bc90fadf3b651d",
+      "size": 79189
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/BlockElementRenderer.swift",
+      "sha": "4b57988ad8c18c349bce30039de32bdf31fa9dd4",
+      "size": 3618
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/BoxDrawingRenderer.swift",
+      "sha": "cddbaa27b5af3e3d5177a52af4d10d550e4e961d",
+      "size": 36520
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/CaretView.swift",
+      "sha": "578e66e5990becc4b010e9b91c0a8d324857b792",
+      "size": 2288
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/Extensions.swift",
+      "sha": "f40353592c5253a93176404fa180ac1c245f30d5",
+      "size": 854
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/TerminalProgressBarView.swift",
+      "sha": "f5d7349b35c8f52bb950765f6609eaceedcf1fbf",
+      "size": 4720
+    },
+    {
+      "path": "Sources/SwiftTerm/Apple/TerminalViewDelegate.swift",
+      "sha": "df4afe5e6d1fd06fa8970a32f50b8301918509a5",
+      "size": 3510
+    },
+    {
+      "path": "Sources/SwiftTerm/Buffer.swift",
+      "sha": "8658be2221962f6f61962c2051c3a68261da3a6e",
+      "size": 44068
+    },
+    {
+      "path": "Sources/SwiftTerm/BufferLine.swift",
+      "sha": "badd979949151f11f2b0f7f9b1b288180158a598",
+      "size": 11801
+    },
+    {
+      "path": "Sources/SwiftTerm/BufferSet.swift",
+      "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "size": 0
+    },
+    {
+      "path": "Sources/SwiftTerm/CharData.swift",
+      "sha": "836a077d4311dd9e9a0696393d01500a4b8afda8",
+      "size": 11940
+    },
+    {
+      "path": "Sources/SwiftTerm/CharSets.swift",
+      "sha": "913d03ec2f450ce15782ee7296f272d053a936b1",
+      "size": 10120
+    },
+    {
+      "path": "Sources/SwiftTerm/CircularList.swift",
+      "sha": "09a1bbd4d496bf28f013e7448d90464abacf6550",
+      "size": 12187
+    },
+    {
+      "path": "Sources/SwiftTerm/Colors.swift",
+      "sha": "ff156be548402a94969a3d05d6d737c05f638ce4",
+      "size": 17212
+    },
+    {
+      "path": "Sources/SwiftTerm/EscapeSequenceParser.swift",
+      "sha": "c305aaad15cded9acea835d3c607ab6bcf627b0d",
+      "size": 38253
+    },
+    {
+      "path": "Sources/SwiftTerm/EscapeSequences.swift",
+      "sha": "b3f865efebefd2880fd2b103c110754239b8c18e",
+      "size": 7981
+    },
+    {
+      "path": "Sources/SwiftTerm/ExtensionsTerminal.swift",
+      "sha": "134f2dcabdf55d7f197e3ce14caffa6332536a0c",
+      "size": 2149
+    },
+    {
+      "path": "Sources/SwiftTerm/File.swift",
+      "sha": "7b1e462680c6fc36859192867983143d7b9fba54",
+      "size": 91
+    },
+    {
+      "path": "Sources/SwiftTerm/HeadlessTerminal.swift",
+      "sha": "c40d809ce021d9e933054dacd1e1e523471615d9",
+      "size": 2166
+    },
+    {
+      "path": "Sources/SwiftTerm/KittyGraphics.swift",
+      "sha": "6c6c3b1662c4ca27e2928beb5f7b4daa15f70f77",
+      "size": 78193
+    },
+    {
+      "path": "Sources/SwiftTerm/KittyPlaceholder.swift",
+      "sha": "dbcf64c2f640783ef27cfbdbd3a0d6d0ff2a2b15",
+      "size": 11924
+    },
+    {
+      "path": "Sources/SwiftTerm/Line.swift",
+      "sha": "040145c407b30e50d6f2245eaccfa9200e7737a2",
+      "size": 1943
+    },
+    {
+      "path": "Sources/SwiftTerm/LocalProcess.swift",
+      "sha": "94043666f776b8cc28211b2e97fe6ac63bd1b8df",
+      "size": 18010
+    },
+    {
+      "path": "Sources/SwiftTerm/Position.swift",
+      "sha": "0171b12b85ab3311b7c9da009e4d37264e0274f3",
+      "size": 1199
+    },
+    {
+      "path": "Sources/SwiftTerm/Pty.swift",
+      "sha": "0e18402f550bbf61a57c61671c8a0f469c30cbd3",
+      "size": 4104
+    },
+    {
+      "path": "Sources/SwiftTerm/SearchEngine.swift",
+      "sha": "4506ee481beabb03d66950b0002e6fc4aae8a65c",
+      "size": 14277
+    },
+    {
+      "path": "Sources/SwiftTerm/SearchLineCache.swift",
+      "sha": "aac2c695aeac924345bdf28f372a539f9308e94c",
+      "size": 3140
+    },
+    {
+      "path": "Sources/SwiftTerm/SearchOptions.swift",
+      "sha": "600a14cf4de1249d5a8c9a7ebd369402f2c0902a",
+      "size": 749
+    },
+    {
+      "path": "Sources/SwiftTerm/SearchService.swift",
+      "sha": "955651a54e953ac1327be0ffedd450d7249e6ef9",
+      "size": 4585
+    },
+    {
+      "path": "Sources/SwiftTerm/SearchState.swift",
+      "sha": "4d65d0dce54ed57fee3834a724d208916dbf90e0",
+      "size": 826
+    },
+    {
+      "path": "Sources/SwiftTerm/SelectionService.swift",
+      "sha": "227309f48d325a9800752037ed65f9f15f0020db",
+      "size": 17887
+    },
+    {
+      "path": "Sources/SwiftTerm/SixelDcsHandler.swift",
+      "sha": "b84549bd735a6534df421ff62ac76613cb775f5d",
+      "size": 12006
+    },
+    {
+      "path": "Sources/SwiftTerm/Terminal.swift",
+      "sha": "f0c176ec43c3984c969d797262e39ba3cfb33506",
+      "size": 218680
+    },
+    {
+      "path": "Sources/SwiftTerm/TerminalOptions.swift",
+      "sha": "ed2ab840fcac87d6f8dd0a2323d5956603232fa4",
+      "size": 4365
+    },
+    {
+      "path": "Sources/SwiftTerm/TerminalViewSearch.swift",
+      "sha": "131dc06b253e8e0b1eaf72ebfa345c79740b0944",
+      "size": 3870
+    },
+    {
+      "path": "Sources/SwiftTerm/UnicodeWidthData.swift",
+      "sha": "59e5913bf2b968c4de9d881933625b8b2e265279",
+      "size": 12483
+    },
+    {
+      "path": "Sources/SwiftTerm/Utilities.swift",
+      "sha": "e2e1c793738f4e4588f9d1ef48179f76d88a04bb",
+      "size": 15700
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSAccessoryView.swift",
+      "sha": "30ae8b9ca02279a18fb66fb6353f829afc4129bc",
+      "size": 15500
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSCaretView.swift",
+      "sha": "4df2c33d1cb029251a6e4ac5fdd2d823bab48c3d",
+      "size": 3844
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSDoubleButton.swift",
+      "sha": "2ebb5e791e4286d486ea80ddf8c3d1d7d3404bed",
+      "size": 6550
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSExtensions.swift",
+      "sha": "94ece107cde25a8b02218b11fe210f7634605727",
+      "size": 2671
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSKeyboardView.swift",
+      "sha": "3e318e3452ff8b177ac418c4eb71aa1c8e528c6a",
+      "size": 7858
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSTerminalView.swift",
+      "sha": "d1856b58719bffbadd0e6a6f6c4d928e02dede2d",
+      "size": 68085
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSTextInput.swift",
+      "sha": "da562ffdff07fe532c03bb37e79d741565f4d79e",
+      "size": 20932
+    },
+    {
+      "path": "Sources/SwiftTerm/iOS/iOSTextStorage.swift",
+      "sha": "a7b8d24bc93ebc6a3c935308174b39b861b55e02",
+      "size": 2536
+    },
+    {
+      "path": "Sources/SwiftTerm/Mac/MacAccessibilityService.swift",
+      "sha": "315e2ad8aa234a122a6d5ebc07c2bf287ad14249",
+      "size": 166
+    }
+  ]
+}

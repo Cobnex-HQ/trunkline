@@ -1,0 +1,33 @@
+# Local source/build caches and generated Xcode project
+.build/
+DerivedData/
+Trunkline.xcodeproj/
+**/.swiftpm/
+**/target/
+**/node_modules/
+**/__pycache__/
+*.pyc
+# Private settings, experiments, installed apps and output
+Local/
+Applications/
+dist/
+.impeccable/
+Config/Local.xcconfig
+Config/Generated.xcconfig
+**/Private/
+**/.env
+**/.env.*
+*.log
+*.log.*
+*.xcuserstate
+xcuserdata/
+*.p12
+*.pem
+*.mobileprovision
+.DS_Store
+# Reconstructed from checksum-pinned manifests by Scripts/bootstrap.py
+Vendor/MoonlightSource/
+Vendor/SunshineSource/
+Vendor/SunshineRuntime/
+Vendor/OpenSSL/
+Vendor/streaming-sources.json

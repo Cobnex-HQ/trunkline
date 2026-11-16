@@ -1,0 +1,160 @@
+diff --git a/README.md b/README.md
+index 531a5cc..793a5a8 100644
+--- a/README.md
++++ b/README.md
+@@ -205,3 +205,7 @@ for the authoritative repository path and artifact assignments.
+ |          | [End-User Gamepad Guide](docs/end-user-gamepad-guide.md) |
+ 
+ </div>
++
++## Trunkline macOS coordinate adaptation
++
++The Trunkline backend adaptation interprets absolute mouse coordinates within the logical bounding rectangle of all active displays. Coordinates are normalized from the caller-provided dimensions, then translated by the desktop origin. Relative motion and buttons retain the current global position and clamp to the nearest active screen rather than the primary monitor. Display topology is cached and refreshed on CoreGraphics reconfiguration callbacks. Consumers must supply matching global desktop metadata; this patch must be paired with Trunkline’s capture-geometry patch.
+diff --git a/src/platform/macos/macos_backend.cpp b/src/platform/macos/macos_backend.cpp
+index c67ca89..b148471 100644
+--- a/src/platform/macos/macos_backend.cpp
++++ b/src/platform/macos/macos_backend.cpp
+@@ -6,6 +6,7 @@
+ // standard includes
+ #include <algorithm>
+ #include <array>
++#include <limits>
+ #include <chrono>
+ #include <cmath>
+ #include <cstdint>
+@@ -378,6 +379,35 @@ namespace lvh::detail {
+       };
+     }
+ 
++    /**
++     * @brief Immutable logical-coordinate topology shared by mouse events.
++     */
++    struct DisplayLayout {
++      CGRect bounds {};  ///< Bounding rectangle of all active displays.
++      std::vector<CGRect> screens;  ///< Individual active display rectangles.
++
++      /**
++       * @brief Clamp a point to the nearest actual display, excluding desktop gaps.
++       * @param point Desired global CoreGraphics coordinate.
++       * @return Closest usable coordinate on an active display.
++       */
++      CGPoint clamp(CGPoint point) const {
++        CGPoint nearest = bounds.origin;
++        double distance = std::numeric_limits<double>::infinity();
++        for (const auto &screen : screens) {
++          const CGPoint candidate {
++            std::clamp(point.x, screen.origin.x, screen.origin.x + screen.size.width - 1),
++            std::clamp(point.y, screen.origin.y, screen.origin.y + screen.size.height - 1)
++          };
++          const auto dx = point.x - candidate.x;
++          const auto dy = point.y - candidate.y;
++          const auto squared = dx * dx + dy * dy;
++          if (squared < distance) { nearest = candidate; distance = squared; }
++        }
++        return nearest;
++      }
++    };
++
+     /**
+      * @brief Shared macOS backend state.
+      */
+@@ -389,7 +419,10 @@ namespace lvh::detail {
+           source {CGEventSourceCreate(kCGEventSourceStateHIDSystemState)},
+           keyboard_source {CGEventSourceCreate(kCGEventSourceStatePrivate)},
+           mouse_event {source ? CGEventCreate(source) : nullptr},
+-          scroll_lines_per_detent_value {read_scroll_lines_per_detent(scrollwheel_scaling)} {}
++          scroll_lines_per_detent_value {read_scroll_lines_per_detent(scrollwheel_scaling)} {
++        refresh_display_layout();
++        CGDisplayRegisterReconfigurationCallback(display_changed, this);
++      }
+ 
+       MacosInputState(const MacosInputState &) = delete;
+       MacosInputState &operator=(const MacosInputState &) = delete;
+@@ -397,6 +430,7 @@ namespace lvh::detail {
+       MacosInputState &operator=(MacosInputState &&) noexcept = delete;
+ 
+       ~MacosInputState() {
++        CGDisplayRemoveReconfigurationCallback(display_changed, this);
+         if (mouse_event) {
+           CFRelease(mouse_event);
+         }
+@@ -408,6 +442,54 @@ namespace lvh::detail {
+         }
+       }
+ 
++      std::shared_ptr<const DisplayLayout> layout;  ///< Updated only on display reconfiguration.
++      mutable std::mutex layout_mutex;  ///< Protects publication of immutable topology snapshots.
++
++      /**
++       * @brief Retain the current immutable topology without enumerating displays.
++       * @return Logical-coordinate topology for this event.
++       */
++      std::shared_ptr<const DisplayLayout> display_layout() const {
++        std::lock_guard lock {layout_mutex};
++        return layout;
++      }
++
++      /**
++       * @brief Refresh logical display geometry outside the pointer event path.
++       */
++      void refresh_display_layout() {
++        auto value = std::make_shared<DisplayLayout>();
++        std::array<CGDirectDisplayID, 32> ids {};
++        uint32_t count = 0;
++        if (CGGetActiveDisplayList(ids.size(), ids.data(), &count) == kCGErrorSuccess) {
++          for (uint32_t i = 0; i < count; ++i) {
++            const auto rect = CGDisplayBounds(ids[i]);
++            if (rect.size.width >= 1 && rect.size.height >= 1) { value->screens.push_back(rect); }
++          }
++        }
++        if (value->screens.empty()) {
++          auto fallback = CGDisplayBounds(CGMainDisplayID());
++          if (fallback.size.width < 1 || fallback.size.height < 1) { fallback = CGRectMake(0, 0, 1, 1); }
++          value->screens.push_back(fallback);
++        }
++        value->bounds = value->screens.front();
++        for (const auto &rect : value->screens) { value->bounds = CGRectUnion(value->bounds, rect); }
++        std::lock_guard lock {layout_mutex};
++        layout = std::move(value);
++      }
++
++      /**
++       * @brief Publish new geometry when a CoreGraphics display transition finishes.
++       * @param display_id Changed display, unused because the whole topology is refreshed.
++       * @param flags Display transition flags.
++       * @param context Owning input state.
++       */
++      static void display_changed([[maybe_unused]] CGDirectDisplayID display_id, CGDisplayChangeSummaryFlags flags, void *context) {
++        if (!(flags & kCGDisplayBeginConfigurationFlag)) {
++          static_cast<MacosInputState *>(context)->refresh_display_layout();
++        }
++      }
++
+       /**
+        * @brief Compute the coordinate scaling factor for a display.
+        *
+@@ -688,11 +770,8 @@ namespace lvh::detail {
+         CGPoint previous_location,
+         int click_count
+       ) const {
+-        const auto display_bounds = CGDisplayBounds(state_->display);
+-        const auto location = CGPoint {
+-          std::clamp(raw_location.x, display_bounds.origin.x, display_bounds.origin.x + display_bounds.size.width - 1),
+-          std::clamp(raw_location.y, display_bounds.origin.y, display_bounds.origin.y + display_bounds.size.height - 1)
+-        };
++        const auto topology = state_->display_layout();
++        const auto location = topology->clamp(raw_location);
+ 
+         const auto event = state_->mouse_event;
+         CGEventSetType(event, type);
+@@ -720,8 +799,8 @@ namespace lvh::detail {
+       }
+ 
+       OperationStatus submit_absolute_motion(const MouseEvent &event) {
+-        const auto display_bounds = CGDisplayBounds(state_->display);
+-        const auto location = absolute_mouse_location(event, display_bounds);
++        const auto topology = state_->display_layout();
++        const auto location = absolute_mouse_location(event, topology->bounds);
+         const auto motion = macos_mouse_motion(mouse_down_);
+         return post_mouse(motion.button, motion.event_type, location, current_location(), 0);
+       }

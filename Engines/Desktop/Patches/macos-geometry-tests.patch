@@ -1,0 +1,303 @@
+diff --git a/tests/unit/platform/test_trunkline_capture.mm b/tests/unit/platform/test_trunkline_capture.mm
+new file mode 100644
+index 00000000..f63b3563
+--- /dev/null
++++ b/tests/unit/platform/test_trunkline_capture.mm
+@@ -0,0 +1,114 @@
++/**
++ * @file tests/unit/platform/test_trunkline_capture.mm
++ * @brief Exercise the actual capture loop with an inert AV source and synthetic display notifications.
++ */
++#include "../../tests_common.h"
++#import "src/platform/macos/av_video.h"
++#include "src/display_selection.h"
++
++namespace capture_fixture {
++  CGDisplayReconfigurationCallBack callback = nullptr;  ///< Registered geometry observer.
++  void *context = nullptr;  ///< Observer context.
++  unsigned starts = 0;  ///< Capture start count.
++  unsigned cancellations = 0;  ///< Explicit cancellation count.
++  bool select_display = false;  ///< Request a new display instead of removing one.
++  bool fail_start = false;  ///< Simulate output setup failure.
++  CGError register_callback(CGDisplayReconfigurationCallBack value, void *owner) {
++    callback = value; context = owner; return kCGErrorSuccess;
++  }
++  CGError remove_callback(CGDisplayReconfigurationCallBack, void *) {
++    callback = nullptr; context = nullptr; return kCGErrorSuccess;
++  }
++}
++
++/** @brief AV source that supplies no frames and never opens a capture device. */
++@interface TrunklineInertVideo: AVVideo
++@end
++@implementation TrunklineInertVideo
++- (dispatch_semaphore_t)capture:(FrameCallbackBlock)frameCallback {
++  ++capture_fixture::starts;
++  if (capture_fixture::fail_start) { return nil; }
++  auto signal = dispatch_semaphore_create(0);
++  if (capture_fixture::select_display) {
++    video::display_selection().request("external", {"main", "external"});
++  } else {
++    capture_fixture::callback(2, kCGDisplayRemoveFlag, capture_fixture::context);
++  }
++  return signal;
++}
++- (void)cancelCapture:(dispatch_semaphore_t)signal {
++  ++capture_fixture::cancellations;
++  dispatch_semaphore_signal(signal);
++}
++@end
++
++#define DisplayChangeObserver TrunklineObservedGeometry
++#define CGDisplayRegisterReconfigurationCallback capture_fixture::register_callback
++#define CGDisplayRemoveReconfigurationCallback capture_fixture::remove_callback
++#define AVVideo TrunklineInertVideo
++#define av_display_t TrunklineCaptureFixture
++#define display trunkline_display_fixture
++#define display_names trunkline_display_names_fixture
++#define needs_encoder_reenumeration trunkline_encoder_reenumeration_fixture
++#include "src/platform/macos/display.mm"
++#undef needs_encoder_reenumeration
++#undef display_names
++#undef display
++#undef av_display_t
++#undef AVVideo
++#undef CGDisplayRemoveReconfigurationCallback
++#undef CGDisplayRegisterReconfigurationCallback
++#undef DisplayChangeObserver
++
++TEST(TrunklineCaptureRecovery, DisplayRemovalWithoutFramesCancelsAndRequestsReinitialization) {
++  capture_fixture::starts = 0;
++  capture_fixture::cancellations = 0;
++  capture_fixture::fail_start = false;
++  {
++    platf::TrunklineCaptureFixture capture;
++    capture.topology = std::make_unique<platf::TrunklineObservedGeometry>();
++    capture.av_capture = [TrunklineInertVideo new];
++    bool cursor = true;
++    const auto begin = std::chrono::steady_clock::now();
++    const auto result = capture.capture([](auto &&, bool) { return true; }, [](auto &) { return false; }, &cursor);
++    EXPECT_EQ(result, platf::capture_e::reinit);
++    EXPECT_EQ(capture_fixture::cancellations, 1);
++    EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::seconds(2));
++    EXPECT_EQ(capture.capture([](auto &&, bool) { return true; }, [](auto &) { return false; }, &cursor), platf::capture_e::reinit);
++    EXPECT_EQ(capture_fixture::starts, 1);
++  }
++  EXPECT_EQ(capture_fixture::callback, nullptr);
++}
++
++TEST(TrunklineCaptureRecovery, CaptureSetupFailureReturnsErrorWithoutWaiting) {
++  capture_fixture::fail_start = true;
++  platf::TrunklineCaptureFixture capture;
++  capture.topology = std::make_unique<platf::TrunklineObservedGeometry>();
++  capture.av_capture = [TrunklineInertVideo new];
++  bool cursor = true;
++  EXPECT_EQ(capture.capture([](auto &&, bool) { return true; }, [](auto &) { return false; }, &cursor), platf::capture_e::error);
++  capture_fixture::fail_start = false;
++}
++
++/** @brief A pending monitor choice cancels idle capture without waiting for another frame. */
++TEST(TrunklineCaptureRecovery, DisplaySelectionWithoutFramesRequestsReinitialization) {
++  capture_fixture::starts = 0;
++  capture_fixture::cancellations = 0;
++  capture_fixture::fail_start = false;
++  capture_fixture::select_display = true;
++  auto cleanup = util::fail_guard([]() {
++    capture_fixture::select_display = false;
++    video::display_selection().deactivate();
++  });
++  video::display_selection().request("main", {"main", "external"});
++  video::display_selection().activate("main");
++  platf::TrunklineCaptureFixture capture;
++  capture.topology = std::make_unique<platf::TrunklineObservedGeometry>();
++  capture.av_capture = [TrunklineInertVideo new];
++  bool cursor = true;
++  const auto begin = std::chrono::steady_clock::now();
++  EXPECT_EQ(capture.capture([](auto &&, bool) { return true; }, [](auto &) { return false; }, &cursor), platf::capture_e::reinit);
++  EXPECT_EQ(capture_fixture::cancellations, 1);
++  EXPECT_LT(std::chrono::steady_clock::now() - begin, std::chrono::seconds(2));
++  EXPECT_EQ(video::display_selection().snapshot().preferred, "external");
++}
+diff --git a/tests/unit/platform/test_trunkline_geometry.mm b/tests/unit/platform/test_trunkline_geometry.mm
+new file mode 100644
+index 00000000..1d156a40
+--- /dev/null
++++ b/tests/unit/platform/test_trunkline_geometry.mm
+@@ -0,0 +1,76 @@
++/**
++ * @file tests/unit/platform/test_trunkline_geometry.mm
++ * @brief Verify capture geometry through production video and input conversion.
++ */
++#include "../../tests_common.h"
++#include "src/input.h"
++#include "src/video.h"
++#include "src/platform/virtualhid_input.h"
++#include "src/platform/macos/display_geometry.h"
++
++namespace video {
++  input::touch_port_t make_port(platf::display_t *, const config_t &);
++}
++namespace input {
++  std::optional<std::pair<float, float>> client_to_touchport(
++    std::shared_ptr<input_t> &, const std::pair<float, float> &, const std::pair<float, float> &);
++}
++namespace {
++  /** @brief Capture metadata fixture that never opens a capture device. */
++  struct GeometryDisplay: platf::display_t {
++    platf::capture_e capture(const push_captured_image_cb_t &, const pull_free_image_cb_t &, bool *) override {
++      return platf::capture_e::error;
++    }
++    std::shared_ptr<platf::img_t> alloc_img() override { return nullptr; }
++    int dummy_img(platf::img_t *) override { return 1; }
++  };
++}
++
++TEST(TrunklineDisplayGeometry, ConvertsCaptureMetadataThroughVideoAndInput) {
++  ASSERT_FALSE(task_pool.running());
++  auto platform_input = platf::input();
++  ASSERT_TRUE(platform_input);
++  auto &context = platf::virtualhid::get_input_context(platform_input);
++  context = platf::virtualhid::input_context_t {lvh::BackendKind::fake};
++  input::testing::set_platform_input(std::move(platform_input));
++  auto mailbox = std::make_shared<safe::mail_raw_t>();
++  auto client = input::alloc(mailbox, "trunkline-display-geometry");
++  const CGRect main = {{0, 0}, {1512, 982}};
++  const CGRect left = {{-1920, 0}, {1920, 1080}};
++  const CGRect above = {{0, -1200}, {1920, 1200}};
++  struct Case {
++    CGRect captured;
++    std::vector<CGRect> displays;
++    int pixels_w, pixels_h, stream_w, stream_h;
++    float expected_x, expected_y;
++  };
++  const std::vector<Case> cases {
++    {main, {main, left}, 3024, 1964, 1920, 1080, 2676, 491},
++    {main, {main, left}, 3024, 1964, 1080, 1920, 2676, 491},
++    {left, {main, left}, 1920, 1080, 1920, 1080, 960, 540},
++    {above, {main, above}, 3840, 2400, 1920, 1080, 960, 600},
++    {main, {main, above}, 3024, 1964, 1920, 1080, 756, 1691},
++  };
++  for (const auto &example : cases) {
++    GeometryDisplay display;
++    display.width = example.pixels_w;
++    display.height = example.pixels_h;
++    platf::apply_macos_input_geometry(display, example.captured, example.displays);
++    video::config_t config {};
++    config.width = example.stream_w;
++    config.height = example.stream_h;
++    const auto port = video::make_port(&display, config);
++    mailbox->event<input::touch_port_t>(mail::touch_port)->raise(port);
++    const auto result = input::client_to_touchport(client,
++      {example.stream_w / 2.0F, example.stream_h / 2.0F},
++      {static_cast<float>(example.stream_w), static_cast<float>(example.stream_h)});
++    ASSERT_TRUE(result.has_value());
++    EXPECT_NEAR(result->first, example.expected_x, 0.01F);
++    EXPECT_NEAR(result->second, example.expected_y, 0.01F);
++    EXPECT_EQ(port.env_logical_width, display.env_logical_width);
++    EXPECT_EQ(port.env_logical_height, display.env_logical_height);
++  }
++  client.reset();
++  input::terminate_gamepads();
++  input::testing::set_platform_input({});
++}
+diff --git a/tests/unit/test_confighttp.cpp b/tests/unit/test_confighttp.cpp
+index 29e5529a..38ea76e7 100644
+--- a/tests/unit/test_confighttp.cpp
++++ b/tests/unit/test_confighttp.cpp
+@@ -174,6 +174,7 @@ protected:
+ 
+     // Set up server
+     server = std::make_unique<SimpleWeb::Server<SimpleWeb::HTTPS>>(cert_file.string(), key_file.string());
++    server->config.address = "127.0.0.1";
+     server->config.port = 0;  // OS assigns port
+     server->config.reuse_address = true;
+     server->config.timeout_request = 5;
+@@ -325,6 +326,8 @@ protected:
+       confighttp::browseDirectory(response, request);
+     };
+ 
++    server->resource["^/trunkline-displays-test$"]["GET"] = confighttp::getTrunklineDisplays;
++    server->resource["^/trunkline-displays-test$"]["POST"] = confighttp::selectTrunklineDisplay;
+     server->resource["^/virtual-input-status-test$"]["GET"] = confighttp::getVirtualInputStatus;
+     server->resource["^/virtual-input-license-test$"]["GET"] = confighttp::getVirtualInputLicense;
+     server->resource["^/virtual-input-license-test$"]["POST"] = confighttp::updateVirtualInputLicense;
+@@ -1938,3 +1941,79 @@ TEST_F(BrowseDirectoryTest, GetWindowsDrives_EntriesHaveCorrectFormat) {
+   }
+ }
+ #endif
++
++/** @brief Real HTTPS handlers reject unauthenticated reads and writes. */
++TEST_F(ConfigHttpTest, TrunklineDisplayAuthentication) {
++  SimpleWeb::CaseInsensitiveMultimap headers {{"Content-Type", "application/json"}};
++  EXPECT_EQ(client->request("GET", "/trunkline-displays-test")->status_code, "401 Unauthorized");
++  EXPECT_EQ(client->request("POST", "/trunkline-displays-test", R"({"id":"1"})", headers)->status_code, "401 Unauthorized");
++}
++
++/** @brief Cross-origin display changes retain the existing CSRF gate. */
++TEST_F(ConfigHttpTest, TrunklineDisplayCrossOriginRejection) {
++  SimpleWeb::CaseInsensitiveMultimap headers {
++    {"Authorization", create_auth_header("testuser", "testpass")},
++    {"Content-Type", "application/json"}, {"Origin", "https://example.invalid"}
++  };
++  EXPECT_EQ(client->request("POST", "/trunkline-displays-test", R"({"id":"1"})", headers)->status_code, "400 Bad Request");
++}
++
++/** @brief Validate JSON, types, bounds and unavailable identities at the HTTP boundary. */
++TEST_F(ConfigHttpTest, TrunklineDisplayRequestValidation) {
++  SimpleWeb::CaseInsensitiveMultimap headers {
++    {"Authorization", create_auth_header("testuser", "testpass")}, {"Content-Type", "application/json"}
++  };
++  for (const std::string &body : {std::string("not-json"), std::string("[]"), std::string("{}"),
++       std::string(R"({"id":4})"), std::string(R"({"id":""})"), std::string(R"({"id":"not-a-display"})"), std::string(1100, 'x')}) {
++    EXPECT_EQ(client->request("POST", "/trunkline-displays-test", body, headers)->status_code, "400 Bad Request");
++  }
++}
++
++/** @brief Listing is an authenticated snapshot even when no display is attached. */
++TEST_F(ConfigHttpTest, TrunklineDisplayListing) {
++  SimpleWeb::CaseInsensitiveMultimap headers {{"Authorization", create_auth_header("testuser", "testpass")}};
++  const auto response = client->request("GET", "/trunkline-displays-test", "", headers);
++  ASSERT_EQ(response->status_code, "200 OK");
++  const auto body = nlohmann::json::parse(response->content.string());
++  EXPECT_TRUE(body.at("status").get<bool>());
++  ASSERT_TRUE(body.at("displays").is_array());
++  EXPECT_TRUE(body.contains("active_id"));
++  EXPECT_TRUE(body.contains("preferred_id"));
++  EXPECT_TRUE(body.contains("error"));
++  EXPECT_TRUE(body.at("switching").is_boolean());
++#ifdef __APPLE__
++  EXPECT_TRUE(body.at("supported").get<bool>());
++#else
++  EXPECT_FALSE(body.at("supported").get<bool>());
++#endif
++  for (const auto &display : body.at("displays")) {
++    EXPECT_FALSE(display.at("id").get<std::string>().empty());
++    EXPECT_FALSE(display.at("name").get<std::string>().empty());
++    EXPECT_GT(display.at("width").get<int>(), 0);
++    EXPECT_GT(display.at("height").get<int>(), 0);
++  }
++}
++
++/** @brief Valid selection changes intent, not capture readiness; rejection retains that intent. */
++TEST_F(ConfigHttpTest, TrunklineDisplaySelection) {
++  SimpleWeb::CaseInsensitiveMultimap headers {
++    {"Authorization", create_auth_header("testuser", "testpass")}, {"Content-Type", "application/json"}
++  };
++  const auto response = client->request("GET", "/trunkline-displays-test", "", headers);
++  ASSERT_EQ(response->status_code, "200 OK");
++  const auto body = nlohmann::json::parse(response->content.string());
++  if (!body.at("supported").get<bool>() || body.at("displays").empty()) {
++    GTEST_SKIP() << "No active display in this graphical session";
++  }
++  const auto id = body.at("displays").front().at("id").get<std::string>();
++  const auto selected = client->request("POST", "/trunkline-displays-test", nlohmann::json({{"id", id}}).dump(), headers);
++  ASSERT_EQ(selected->status_code, "200 OK");
++  const auto selected_body = nlohmann::json::parse(selected->content.string());
++  EXPECT_TRUE(selected_body.at("status").get<bool>());
++  EXPECT_EQ(selected_body.at("preferred_id"), id);
++  EXPECT_TRUE(selected_body.at("active_id").is_null());
++  EXPECT_FALSE(selected_body.at("switching").get<bool>());
++  EXPECT_EQ(client->request("POST", "/trunkline-displays-test", R"({"id":"unavailable"})", headers)->status_code, "400 Bad Request");
++  const auto after = client->request("GET", "/trunkline-displays-test", "", headers);
++  EXPECT_EQ(nlohmann::json::parse(after->content.string()).at("preferred_id"), id);
++}

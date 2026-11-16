@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "SHA-256 file-integrity entries in pinned dependency manifests"
+condition = "AND"
+paths = ['''(^|/)Dependencies/(openssl|upstream-desktop|client-files)\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"[^"\r\n]+": "[a-f0-9]{64}",?\s*$''']
