@@ -144,11 +144,19 @@
             [[NSRunLoop mainRunLoop] runMode:mode beforeDate:deadline];
         }
     };
+    // Wait for a real callback rather than assuming a cold simulator produces
+    // its first frame within 350 ms. Stop checks retain an observation window.
+    void (^waitForTick)(NSRunLoopMode) = ^(NSRunLoopMode mode) {
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5.0];
+        while (renderer.ticks == 0 && deadline.timeIntervalSinceNow > 0) {
+            [[NSRunLoop mainRunLoop] runMode:mode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        }
+    };
     [renderer start];
-    runMode(NSDefaultRunLoopMode);
+    waitForTick(NSDefaultRunLoopMode);
     XCTAssertGreaterThan(renderer.ticks, 0u, @"The native display link must be active before testing tracking mode");
     renderer.ticks = 0;
-    runMode(UITrackingRunLoopMode);
+    waitForTick(UITrackingRunLoopMode);
     XCTAssertGreaterThan(renderer.ticks, 0u, @"Video display work must continue while UIKit tracks a gesture");
     [renderer stop];
     renderer.ticks = 0;

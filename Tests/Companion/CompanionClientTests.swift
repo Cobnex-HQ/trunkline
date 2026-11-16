@@ -9,6 +9,10 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    // Cold simulator services can take seconds to create listeners or open files.
+    // This bounds fixture startup; heartbeat and protocol deadlines below stay short.
+    private let fixtureStartupTimeout: TimeInterval = 10
+
     func testPairingSeveralMacsPreservesChoicesAndClearsUnsavedPasscode() throws {
         let suite = "trunkline-multi-mac-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -54,7 +58,7 @@ final class CompanionClientTests: XCTestCase {
         let ready = expectation(description: "Route probe fixture")
         let server = try TerminalCreationServer(ready: ready, sessions: [])
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 2)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let port = try XCTUnwrap(server.listener.port)
         let suite = "trunkline-route-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -87,7 +91,7 @@ final class CompanionClientTests: XCTestCase {
         let server = try TerminalCreationServer(ready: ready, sessions: [])
         server.rejection = "This Mac is in use on another device."
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 2)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let port = try XCTUnwrap(server.listener.port)
         let suite = "trunkline-busy-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -109,7 +113,7 @@ final class CompanionClientTests: XCTestCase {
         let server = try TerminalCreationServer(ready: ready, sessions: original)
         server.holdLists = true
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 2)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let suite = "trunkline-terminal-initial-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -136,7 +140,7 @@ final class CompanionClientTests: XCTestCase {
                         TerminalSessionInfo(id: UUID(), title: "Logs", kind: .shell, isRunning: true)]
         let server = try TerminalCreationServer(ready: ready, sessions: original)
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 2)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let suite = "trunkline-terminal-create-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -167,7 +171,7 @@ final class CompanionClientTests: XCTestCase {
         let ready = expectation(description: "Terminal timeout fixture ready")
         let server = try TerminalCreationServer(ready: ready, sessions: [])
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 2)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let suite = "trunkline-terminal-timeout-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -312,7 +316,7 @@ final class CompanionClientTests: XCTestCase {
         let closed = expectation(description: "Stalled channel closed by client")
         let server = try HeartbeatCompanionServer(ready: ready, firstReply: pongSent, closed: closed)
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 2)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let suite = "trunkline-heartbeat-test-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -408,7 +412,7 @@ final class CompanionClientTests: XCTestCase {
         let xml = #"<?xml version="1.0" encoding="UTF-16"?><root status_code="200"><hostname>Test Mac</hostname><uniqueid>test-desktop</uniqueid><mac>00:00:00:00:00:00</mac><LocalIP>127.0.0.1</LocalIP><state>SUNSHINE_SERVER_FREE</state><PairStatus>0</PairStatus><HttpsPort>47984</HttpsPort></root>"#
         let server = try StalledDesktopServer(ready: ready, received: received, closed: closed, responseXML: xml)
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 3)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let engine = TrunklineStream()
         defer { engine.cancel() }
         engine.loadHost("127.0.0.1:\(try XCTUnwrap(server.port))", certificate: nil) { apps, error in
@@ -508,7 +512,7 @@ final class CompanionClientTests: XCTestCase {
         let closed = expectation(description: "Cancel closes the stalled HTTP connection")
         let server = try StalledDesktopServer(ready: ready, received: received, closed: closed)
         defer { server.stop() }
-        await fulfillment(of: [ready], timeout: 3)
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let port = try XCTUnwrap(server.port)
         let engine = TrunklineStream()
         defer { engine.cancel() }
@@ -531,7 +535,7 @@ final class CompanionClientTests: XCTestCase {
         files.upload(url)
         XCTAssertTrue(files.isBusy)
         XCTAssertTrue(replies.isEmpty, "Opening the file must not block this UI turn")
-        await fulfillment(of: [opened], timeout: 3)
+        await fulfillment(of: [opened], timeout: fixtureStartupTimeout)
         XCTAssertEqual(replies, [.beginUpload(name: url.lastPathComponent, size: 262_144)])
         replies.removeAll()
         files.send = { replies.append($0) }
@@ -544,7 +548,7 @@ final class CompanionClientTests: XCTestCase {
             if case .beginUpload = message { nextOpened.fulfill() }
         }
         files.upload(url)
-        await fulfillment(of: [nextOpened], timeout: 3)
+        await fulfillment(of: [nextOpened], timeout: fixtureStartupTimeout)
         XCTAssertEqual(replies, [.beginUpload(name: url.lastPathComponent, size: 262_144)],
                        "The old read must not send data into the reconnected session")
         XCTAssertNil(files.error)
