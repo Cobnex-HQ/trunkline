@@ -150,7 +150,9 @@ final class CompanionClientTests: XCTestCase {
 
     func testOtherWiFiOffersAwayButReachableLocalMacDoesNot() async throws {
         let ready = expectation(description: "Route probe fixture")
-        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        let disconnected = expectation(description: "Reachability probe completed without authentication")
+        let stopped = expectation(description: "Route listener has closed")
+        let server = try TerminalCreationServer(ready: ready, stopped: stopped, disconnected: disconnected, sessions: [])
         defer { server.stop() }
         await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let port = try XCTUnwrap(server.listener.port)
@@ -164,10 +166,11 @@ final class CompanionClientTests: XCTestCase {
         defer { model.disconnect() }
         model.pairingText = pairing.link
         model.networkChanged(available: true)
-        try await Task.sleep(for: .milliseconds(250))
+        await fulfillment(of: [disconnected], timeout: fixtureStartupTimeout)
         XCTAssertFalse(model.offerAwayAccess, "A reachable paired Mac should stay local")
         XCTAssertEqual(server.authentications, 0, "Reachability must not send credentials or occupy the Mac")
         server.stop()
+        await fulfillment(of: [stopped], timeout: fixtureStartupTimeout)
         model.networkChanged(available: true)
         try await terminalEventually(timeout: 5) { model.offerAwayAccess }
         model.chooseAwayAccess()
@@ -892,15 +895,20 @@ private struct TerminalKeyboardFixture: View {
     var rejection: String?
     private(set) var authentications = 0
     private(set) var creations = 0
-    init(ready: XCTestExpectation, sessions: [TerminalSessionInfo]) throws {
+    init(ready: XCTestExpectation, stopped: XCTestExpectation? = nil,
+         disconnected: XCTestExpectation? = nil, sessions: [TerminalSessionInfo]) throws {
         self.sessions = sessions
         listener = try NWListener(using: .tcp, on: .any)
-        listener.stateUpdateHandler = { if case .ready = $0 { ready.fulfill() } }
+        listener.stateUpdateHandler = {
+            if case .ready = $0 { ready.fulfill() }
+            if case .cancelled = $0 { stopped?.fulfill() }
+        }
         listener.newConnectionHandler = { [weak self] connection in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let channel = SecureChannel(connection: connection)
                 self.channel = channel
+                channel.onClose = { _ in disconnected?.fulfill() }
                 channel.onMessage = { [weak self, weak channel] message in
                     guard let self else { return }
                     switch message {

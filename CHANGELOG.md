@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare separate App Store companion archives and Developer ID/notarized Mac release tooling, with explicit development-build rejection and submission documentation.
+
 - Correct direct-touch settings persistence and preserve pointer targets across rapid taps, clicks and drags.
 - Keep Mac button events at the requested remote target while system cursor updates are still pending.
 - Show the actual mouse/keyboard permission state and the current macOS settings name.

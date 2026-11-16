@@ -165,6 +165,9 @@ struct ConnectView: View {
                     }
                 }
                 Section { AppearancePicker() }
+                Section {
+                    Link("Privacy notice", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md")!)
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: passcodeFocused) { _, focused in

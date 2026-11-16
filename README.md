@@ -16,6 +16,10 @@ Trunkline combines remote desktop, terminal sessions, files and Mac controls in 
 - QR pairing, saved Macs and one active controlling device per host.
 - Local Wi-Fi access and experimental away access using a Rust transport. Away access depends on network reachability and rendezvous infrastructure; it is not a server-free VPN or a promise to cross every NAT.
 
+## Distribution plan
+
+The iPhone/iPad companion will use TestFlight and the App Store. The Mac host will be a separate signed, notarized download with its engines bundled. Those public downloads are not available yet; the instructions below are for building from source. See [release preparation](docs/RELEASING.md), [App Store submission](docs/APP_STORE.md), and the [privacy notice](docs/PRIVACY.md).
+
 ## Build and install on your Mac
 
 Requirements: **macOS 15 or newer**, full **Xcode 26 or newer** (open it once to install components), Python 3.10+, and [Homebrew](https://brew.sh). Both Apple silicon and Intel are supported by the build recipes; this checkout has been validated on Apple silicon. Building the desktop engine downloads several dependencies and can take a while on the first run.

@@ -31,3 +31,12 @@ The user confirmed on iPad that direct touch positions the pointer correctly and
 | Distribution | Fresh-Mac setup/upgrade tests, Intel validation if advertised, exact corresponding-source/dependency review, and authorised public signing/notarization. |
 
 No Mac reboot, global network interruption, credential reset or public binary release was performed for these checks. Source publication does not mark the remaining hardware and distribution gates complete.
+
+## Distribution preparation — 2026-11-17
+
+- Both iOS and Apple-silicon Mac **Release archives** built without distribution signing; these are validation artifacts, not installable/public releases. Both resolve version 0.1.0 and build 3 from the project settings.
+- The contributor suite passed: 23 tooling tests, 100 Swift core tests and 11 Rust tests. Release tests include actual ad-hoc-signature rejection, unsigned-archive rejection, archive path containment, local-only App Store export settings and notarization-status validation.
+- All 52 companion tests passed after replacing a route-fixture timing assumption with confirmed probe completion and listener cancellation. The app's connection deadlines were not changed.
+- Real unsigned iOS/Mac archives were rejected before distribution output was created. The installed development Mac app was also rejected by the public-release check.
+- Privacy links and the current-source privacy notice were added. App Store review instructions and the Developer ID/notarization workflow are documented.
+- **Not performed:** Developer ID signing, live notarization/stapling/Gatekeeper acceptance, signed App Store export/upload or public binary publication. No Developer ID Application or Apple Distribution identity was available. Complete those external steps, licensing/privacy review and the hardware gates above before release.

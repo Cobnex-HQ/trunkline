@@ -274,7 +274,10 @@ struct HostView: View {
                 Button("Choose folder…") { model.chooseSharedFolder() }
                 Text("Only this folder is shared. Changing it stops access.").font(.caption).foregroundStyle(.secondary)
             }
-            Section("About") { LabeledContent("Trunkline", value: "Open source") }
+            Section("About") {
+                LabeledContent("Trunkline", value: "Open source")
+                Link("Privacy notice", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md")!)
+            }
         }.formStyle(.grouped)
     }
 
