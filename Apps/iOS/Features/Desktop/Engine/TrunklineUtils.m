@@ -1,3 +1,6 @@
+// Modified for Trunkline; adaptation notice recorded 2026-11-17.
+// Based on Moonlight iOS 02dc9780496eeeac6d01c8bbdccb8b6fe71ef28a.
+// Original notices and licence are retained; see docs/THIRD_PARTY.md.
 //
 //  Utils.m
 //  Moonlight

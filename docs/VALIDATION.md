@@ -40,3 +40,11 @@ No Mac reboot, global network interruption, credential reset or public binary re
 - Real unsigned iOS/Mac archives were rejected before distribution output was created. The installed development Mac app was also rejected by the public-release check.
 - Privacy links and the current-source privacy notice were added. App Store review instructions and the Developer ID/notarization workflow are documented.
 - **Not performed:** Developer ID signing, live notarization/stapling/Gatekeeper acceptance, signed App Store export/upload or public binary publication. No Developer ID Application or Apple Distribution identity was available. Complete those external steps, licensing/privacy review and the hardware gates above before release.
+
+## Third-party attribution audit — 2026-11-17
+
+- Built unsigned iOS and Apple-silicon Mac Release archives with the revised notice collector and acknowledgments links. No installed app was replaced and no binary was published.
+- Verified all 14 mandatory original/supplemental notice files by SHA-256 inside each archive; both pinned Moonlight App Store exception texts remain intact.
+- All 29 tooling tests (including six notice regressions), 100 shared Swift tests and 11 Rust tests passed. Pinned client/terminal/crypto dependency verification also passed.
+- The generated inventory reports 42 of 367 external Cargo packages for further notice review. This is the full lock graph, including other targets and build dependencies, not a target-specific binary inventory.
+- Exact codec sources/build flags, complete native/Rust/web notices, OpenSSL wrapper provenance and whole-app App Store licensing remain unresolved. See THIRD_PARTY.md. This audit does not certify public binary distribution.

@@ -1,0 +1,58 @@
+[
+  {
+    "path": "LICENSE",
+    "sha256": "30f6527e75d7305d7a3bc7f0dddc32441229fb5b82829f3a73dff9f5ea1ede2c"
+  },
+  {
+    "path": "Vendor/SunshineSource/LICENSE",
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  {
+    "path": "Vendor/SunshineSource/NOTICE",
+    "sha256": "6e679d2d6fe2c1a78e053e5f9ba91ad1bc0e9e115c23bf26d64c91480cbb783d"
+  },
+  {
+    "path": "Vendor/MoonlightSource/LICENSE.txt",
+    "sha256": "2d0e36492509bd2a06070d3fafb8f9599b72244b19bb64d262f3bbe9270b6170"
+  },
+  {
+    "path": "Vendor/MoonlightCore/LICENSE.txt",
+    "sha256": "91dce0f5e08fded79f0eaecd83d8eef8611ed82dfdac4a0eedcbcdcb5f5eb3c8"
+  },
+  {
+    "path": "Vendor/MoonlightCore/enet/LICENSE",
+    "sha256": "77f94e3be39938801163844b8bf9a4f12badcc0da136e9886e7da14a816d74d3"
+  },
+  {
+    "path": "Vendor/MoonlightCore/nanors/LICENSE",
+    "sha256": "3fdda5f011d8490331950398e86427d67dfae05e048681476c2c6b8c34bdd033"
+  },
+  {
+    "path": "Vendor/MoonlightSource/X1Kit/LICENSE.md",
+    "sha256": "5c248e45bb8aad9bcb63cff27d9c604fd5b4d6dafa242a931338b6d4c2661553"
+  },
+  {
+    "path": "Vendor/SwiftTerm/LICENSE",
+    "sha256": "1b17fa27394e89b3dc62d60c81ebe7e5554639b2382e4b057b4277ed202bfd77"
+  },
+  {
+    "path": "Apps/macOS/Resources/macowl-LICENSE.txt",
+    "sha256": "007bbd0668d4508607e386dd4713225227724ecc270b3d692cd0aeec231f49e8"
+  },
+  {
+    "path": "Apps/iOS/Resources/SwiftTerm-LICENSE.txt",
+    "sha256": "1b17fa27394e89b3dc62d60c81ebe7e5554639b2382e4b057b4277ed202bfd77"
+  },
+  {
+    "path": "Vendor/MoonlightSource/libs/SDL2/include/SDL_copying.h",
+    "sha256": "e73b1830b863f1a2979b88162681870b9e62a62522d4e2315dd3ad5081d0430e"
+  },
+  {
+    "path": "Vendor/OpenSSL/OpenSSL.xcframework/ios-arm64/OpenSSL.framework/Headers/opensslv.h",
+    "sha256": "3ff58d1595319de69a5cae3e57bf2f0b5be2ddcbb9385548efdf1044ee08dddb"
+  },
+  {
+    "path": "Licenses/Apache-2.0/LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  }
+]

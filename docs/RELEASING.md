@@ -48,7 +48,7 @@ The first command proves Release compilation without creating a distributable ar
 
 ## Before publishing binaries
 
-1. Review licences, original notices and complete corresponding source for the exact desktop/client/codec/crypto dependency graph. Provenance hashes and upstream links alone do not replace required source and build materials. Explicitly review App Store permissions for the iOS dependency graph and our own code.
+1. Resolve the attribution audit findings in [THIRD_PARTY.md](THIRD_PARTY.md), including generated `ThirdParty/NOTICE-REVIEW.json` entries and wrapper provenance. Review licences, original notices and complete corresponding source for the exact desktop/client/codec/crypto dependency graph. Provenance hashes and upstream links alone do not replace required source and build materials. Explicitly review App Store permissions for the iOS dependency graph and our own code.
 2. Complete physical-device, display, input, security, reconnect and network checks in [TESTING.md](TESTING.md); [VALIDATION.md](VALIDATION.md) records the outstanding hardware work.
 3. Validate a fresh Mac installation and upgrade, permission persistence, and the advertised architectures/OS versions. Changing signing identity can require renewed OS permission or Keychain authorisation; do not promise that moving from a personal build is prompt-free.
 4. Confirm privacy disclosures, encryption declarations, reviewer access, support details and actual download URLs. Verify that the in-app privacy links open the current public notice.

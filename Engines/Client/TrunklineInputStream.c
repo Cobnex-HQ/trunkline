@@ -1,6 +1,7 @@
+// Trunkline modification notice recorded 2026-11-17; upstream notices retained.
 // Trunkline adaptation of Moonlight common-c InputStream.c (GPL-3.0).
 // Keep absolute motion coalescing inside mouse-button boundaries.
-// Upstream revision and license: Dependencies/streaming-sources.json, Vendor/MoonlightCore/LICENSE.
+// Upstream revision and license: Dependencies/streaming-sources.json, Vendor/MoonlightCore/LICENSE.txt.
 #include "Limelight-internal.h"
 
 static SOCKET inputSock = INVALID_SOCKET;

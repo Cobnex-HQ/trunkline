@@ -575,7 +575,7 @@
     "repository": "https://github.com/SunshineStream/Sunshine",
     "revision": "63d35f702ee9e362e43263742981836ec0710384",
     "tag": "v2026.914.233613",
-    "scope": "Full upstream source archive. Matching official runtimes bundled; local source build is not claimed. Git submodules remain unpopulated in this archive.",
+    "scope": "Reference upstream source archive for attribution. The current Mac runtime is built from the revision, additional input revision and patches in Engines/Desktop/release.json and Engines/Desktop/Patches; this reference archive alone is not complete corresponding source.",
     "files": [
       {
         "path": "CMakeLists.txt",
@@ -2770,9 +2770,9 @@
   },
   "integration": {
     "moonlight": "iOS target compiles upstream sources and MoonlightCore static library, with native SwiftUI setup and upstream stream/input/audio/decoder view controller.",
-    "sunshine": "Mac target bundles official pinned Apple silicon and Intel runtimes. No separate install required. Private configuration and management API are implemented in SunshineHost.",
-    "runtimeProvenance": "Vendor/SunshineRuntime/PROVENANCE.json",
+    "sunshine": "Mac target bundles the locally built desktop candidate selected by Config/Generated.xcconfig. Exact revisions, patches and dependency inputs are recorded in Engines/Desktop; the staged runtime contains provenance and notices.",
+    "runtimeProvenance": "Staged desktop runtime PROVENANCE.json (path selected by Config/Generated.xcconfig)",
     "opensslProvenance": "Vendor/OpenSSL/PROVENANCE.json",
-    "validation": "Compilation is not end-to-end streaming validation. See Documentation/VERIFICATION.md."
+    "validation": "Compilation is not end-to-end streaming validation. See docs/VALIDATION.md."
   }
 }

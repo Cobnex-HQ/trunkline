@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve prefixed and embedded third-party notices, verify mandatory licence texts, expose acknowledgments links, and report unresolved dependency notice collection.
+
 - Prepare separate App Store companion archives and Developer ID/notarized Mac release tooling, with explicit development-build rejection and submission documentation.
 
 - Correct direct-touch settings persistence and preserve pointer targets across rapid taps, clicks and drags.

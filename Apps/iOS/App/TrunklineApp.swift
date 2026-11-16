@@ -167,6 +167,7 @@ struct ConnectView: View {
                 Section { AppearancePicker() }
                 Section {
                     Link("Privacy notice", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md")!)
+                    Link("Open-source acknowledgments", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/THIRD_PARTY.md")!)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
