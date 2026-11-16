@@ -77,6 +77,8 @@ In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch m
 
 ## Contribute
 
+New to the codebase? Start with the [developer documentation index](docs/README.md) and its first-contribution path.
+
 Run `python3 Scripts/dev.py test` for the shared Swift, Rust and tooling suites. See [CONTRIBUTING.md](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md), the [test guide](docs/TESTING.md), and [validation status](docs/VALIDATION.md) for app and device checks. Please discuss large architectural changes in an issue first.
 
 ## Licence and attribution

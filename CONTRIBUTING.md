@@ -1,6 +1,6 @@
 # Contributing to Trunkline
 
-Thanks for helping improve Trunkline. Start with the setup commands in README.md and read docs/ARCHITECTURE.md before changing module boundaries.
+Thanks for helping improve Trunkline. Start with the [developer documentation](docs/README.md), follow the setup commands in [README.md](README.md), and read [the architecture guide](docs/ARCHITECTURE.md) before changing module boundaries.
 
 ## Workflow
 
