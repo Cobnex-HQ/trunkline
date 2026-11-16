@@ -44,6 +44,7 @@ def download(root, url, sha):
     cache.mkdir(parents=True, exist_ok=True)
     path = cache / sha
     if not path.exists():
+        print(f'Downloading {url}', flush=True)
         with tempfile.TemporaryDirectory(dir=cache) as temporary:
             pending = Path(temporary) / 'download'
             subprocess.run(['curl', '--fail', '--location', '--retry', '3', '--connect-timeout', '30',
@@ -98,7 +99,7 @@ def bootstrap(root, check=False):
                 source_tree(root, 'cgutman/X1Kit', sources['moonlightIOS']['submodules']['X1Kit'], hashes['moonlight-x1kit'], x1)
                 verify_files(tree, json.loads((records / 'client-files.json').read_text()))
                 tree.rename(client)
-        source_tree(root, 'LizardByte/Sunshine', sources['sunshine']['revision'], hashes['sunshine'], vendor / 'SunshineSource')
+        source_tree(root, sources['sunshine']['repository'].removeprefix('https://github.com/'), sources['sunshine']['revision'], hashes['sunshine'], vendor / 'SunshineSource')
     verify_git_files(vendor / 'MoonlightCore', sources['moonlightCore']['files'])
     verify_files(vendor / 'SwiftTerm', json.loads((records / 'swiftterm-files.json').read_text()))
     verify_files(client, json.loads((records / 'client-files.json').read_text()))

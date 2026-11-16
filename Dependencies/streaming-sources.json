@@ -572,7 +572,7 @@
     }
   },
   "sunshine": {
-    "repository": "https://github.com/LizardByte/Sunshine",
+    "repository": "https://github.com/SunshineStream/Sunshine",
     "revision": "63d35f702ee9e362e43263742981836ec0710384",
     "tag": "v2026.914.233613",
     "scope": "Full upstream source archive. Matching official runtimes bundled; local source build is not claimed. Git submodules remain unpopulated in this archive.",
@@ -2766,7 +2766,7 @@
     "moonlight-enet": "456c81625078d99f58ec67046d9f5d0b0da83311b86d0a6897772a0e4445cadf",
     "moonlight-nanors": "2d3c6a9d6dc85c7f0978a190208b553608718f6b86569c5e102fe051667d8d41",
     "moonlight-x1kit": "fd21a40d049a828711d29a027552eddc96af6f25cd81a1d951253292529e7c51",
-    "sunshine": "87d8d5d2a264a095d24171a72cbd1e343705880274896cc077065e2dd42bbfa7"
+    "sunshine": "1c21f67fa144ea61cafdeacacf1f0cb88c61867c7613814d6dcf33a73dffe16e"
   },
   "integration": {
     "moonlight": "iOS target compiles upstream sources and MoonlightCore static library, with native SwiftUI setup and upstream stream/input/audio/decoder view controller.",

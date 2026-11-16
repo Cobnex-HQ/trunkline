@@ -27,7 +27,7 @@ The adapted `TrunklineAbsoluteTouchHandler.m`, `TrunklineRelativeTouchHandler.m`
 
 OpenSSL `3.6.3000` is retained under `Vendor/OpenSSL` with verified release checksum and preparation details in its provenance JSON. The client also links the pinned upstream FFmpeg, SDL and Opus artifacts. Their matching source/build/license requirements, along with the desktop codec archive and other native libraries, need a complete corresponding-source and notices review before release. The GPL text is bundled with both applications; X1Kit and SwiftTerm retain their notices in source. Source and runtime provenance alone are not a substitute for publishing the required corresponding source.
 
-Sunshine: https://github.com/LizardByte/Sunshine — GPL-3.0.
+Sunshine: https://github.com/SunshineStream/Sunshine — GPL-3.0.
 Moonlight iOS: https://github.com/moonlight-stream/moonlight-ios — GPL-3.0.
 Moonlight core: https://github.com/moonlight-stream/moonlight-common-c — GPL-3.0.
 

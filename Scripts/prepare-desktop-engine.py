@@ -27,7 +27,7 @@ if not (SOURCE / '.git').exists():
         raise SystemExit(f'Refusing to overwrite non-checkout directory: {SOURCE}')
     SOURCE.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(['git', 'clone', '--filter=blob:none', '--no-checkout',
-                    'https://github.com/LizardByte/Sunshine.git', str(SOURCE)], check=True)
+                    'https://github.com/SunshineStream/Sunshine.git', str(SOURCE)], check=True)
     git(SOURCE, 'checkout', '--detach', REVISION)
 if git(SOURCE, 'rev-parse', 'HEAD', capture=True).stdout.strip() != REVISION:
     raise SystemExit('Engine checkout is at another revision; leaving it untouched.')
