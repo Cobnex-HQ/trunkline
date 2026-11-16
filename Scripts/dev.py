@@ -31,8 +31,24 @@ def doctor():
     run('cargo', '--version')
 
 
+def configure_toolchain():
+    cargo = shutil.which('cargo')
+    rustup = shutil.which('rustup')
+    if not cargo or not rustup:
+        raise RuntimeError('Rust tools are missing from PATH; run Scripts/setup-mac.sh.')
+    toolchain = subprocess.check_output([rustup, 'show', 'active-toolchain'], text=True).split()[0]
+    # Preserve executable basenames: cargo can be a symlink to the rustup dispatcher.
+    values = {'TRUNKLINE_CARGO': cargo, 'TRUNKLINE_RUSTUP': rustup, 'RUSTUP_TOOLCHAIN': toolchain}
+    if any('\n' in value or '\r' in value for value in values.values()):
+        raise RuntimeError('Invalid toolchain path')
+    (ROOT / 'Config/Toolchain.xcconfig').write_text(
+        '// Generated local tool paths for Xcode launched outside a shell.\n' +
+        ''.join(f'{key} = {value}\n' for key, value in values.items()))
+
+
 def setup():
     doctor()
+    configure_toolchain()
     run(sys.executable, 'Scripts/bootstrap.py')
     run('rustup', 'target', 'add', 'aarch64-apple-ios')
     run('cargo', 'fetch', '--locked', '--manifest-path', 'Packages/Transport/Cargo.toml')

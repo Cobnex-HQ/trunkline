@@ -11,7 +11,7 @@ Follow README.md to install prerequisites. `./Scripts/setup-mac.sh` installs the
 | `python3 Scripts/dev.py ios` | Prepare and open the companion project in Xcode |
 | `python3 Scripts/dev.py test` | Run tooling, shared Swift and Rust tests |
 
-Equivalent `make` targets are available. Install accepts `--destination /path/Trunkline.app`; it refuses to replace that destination while its app is running. Build output is `.build/dev-mac`. Logs for the engine are `.build/desktop-dev-ARCH.log`. Successful engine stages are retained under `.build/desktop-runtime-*` for inspection; remove old stages only when no Xcode project is using them.
+Equivalent `make` targets are available. Setup writes ignored `Config/Toolchain.xcconfig` so Xcode can locate the same Rust tools without relying on your shell profile. Install accepts `--destination /path/Trunkline.app`; it refuses to replace that destination while its app is running. Build output is `.build/dev-mac`. Logs for the engine are `.build/desktop-dev-ARCH.log`. Successful engine stages are retained under `.build/desktop-runtime-*` for inspection; remove old stages only when no Xcode project is using them.
 
 ## Signing and permissions
 

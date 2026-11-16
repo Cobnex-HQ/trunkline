@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 cd "$SRCROOT/Packages/Transport"
-cargo_bin="$(command -v cargo || printf %s "${HOME}/.cargo/bin/cargo")"
-rustup_bin="$(command -v rustup || printf %s "${HOME}/.cargo/bin/rustup")"
+cargo_bin="${TRUNKLINE_CARGO:-$(command -v cargo || printf %s "${HOME}/.cargo/bin/cargo")}"
+rustup_bin="${TRUNKLINE_RUSTUP:-$(command -v rustup || printf %s "${HOME}/.cargo/bin/rustup")}"
 destination="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/TrunklineRemote"
 mkdir -p "$(dirname "$destination")"
 set --

@@ -28,7 +28,7 @@ shutil.copyfile(root / 'LICENSE', out / 'Trunkline-LICENSE.txt')
 shutil.copyfile(root / 'docs/THIRD_PARTY.md', out / 'THIRD_PARTY.md')
 # Include licenses of the locked Rust dependency graph in both app bundles.
 metadata = json.loads(subprocess.check_output([
-    shutil.which('cargo') or str(Path.home() / '.cargo/bin/cargo'), 'metadata', '--locked', '--offline', '--format-version', '1',
+    os.environ.get('TRUNKLINE_CARGO') or shutil.which('cargo') or str(Path.home() / '.cargo/bin/cargo'), 'metadata', '--locked', '--offline', '--format-version', '1',
     '--manifest-path', str(root / 'Packages/Transport/Cargo.toml')]))
 packages = []
 for package in metadata['packages']:

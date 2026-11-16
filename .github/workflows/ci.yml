@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+  TRUNKLINE_SIM_DERIVED_DATA: .build/ios
 permissions:
   contents: read
 concurrency:
@@ -56,12 +57,28 @@ jobs:
           python3 - <<'PYTHON'
           import json, os, subprocess
           devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '--json']))['devices']
-          runtimes = sorted((key for key in devices if '.iOS-' in key), key=lambda key: tuple(map(int, key.split('.iOS-')[1].split('-'))), reverse=True)
+          sdk = subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], text=True).strip().replace('.', '-')
+          runtimes = sorted(key for key in devices if '.iOS-' in key and key.split('.iOS-')[1].startswith(sdk))
+          if not runtimes:
+              raise RuntimeError('No simulator matches the selected Xcode SDK ' + sdk)
           phone = next(device for runtime in runtimes for device in devices[runtime] if device['name'].startswith('iPhone'))
           with open(os.environ['GITHUB_ENV'], 'a') as output:
               output.write('TEST_SIMULATOR=' + phone['udid'] + '\n')
           PYTHON
-      - name: Companion and viewport regression tests
-        run: |
-          Scripts/verify-companion.sh "$TEST_SIMULATOR"
-          Scripts/verify-viewport.sh "$TEST_SIMULATOR"
+      - name: Boot test simulator
+        timeout-minutes: 5
+        run: xcrun simctl bootstatus "$TEST_SIMULATOR" -b
+      - name: Companion regression tests
+        timeout-minutes: 15
+        run: Scripts/verify-companion.sh "$TEST_SIMULATOR"
+      - name: Viewport regression tests
+        timeout-minutes: 10
+        run: Scripts/verify-viewport.sh "$TEST_SIMULATOR"
+      - name: Preserve failed test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: simulator-test-results
+          path: .build/ios/Logs/Test/*.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

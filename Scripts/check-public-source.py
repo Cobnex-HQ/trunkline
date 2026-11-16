@@ -10,7 +10,7 @@ forbidden = {'.build', 'target', 'Private', 'Local', 'Applications', 'dist', 'no
 failures = []
 for name in filter(None, files):
     path = root / name
-    if forbidden.intersection(Path(name).parts) or name in {'Config/Local.xcconfig', 'Config/Generated.xcconfig'}:
+    if forbidden.intersection(Path(name).parts) or name in {'Config/Local.xcconfig', 'Config/Generated.xcconfig', 'Config/Toolchain.xcconfig'}:
         failures.append(f'Private/generated file: {name}')
     if path.suffix in {'.p12', '.pem', '.mobileprovision', '.log', '.pyc'}:
         failures.append(f'Private/build artifact: {name}')

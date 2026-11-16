@@ -16,7 +16,7 @@ ROOTS = {'README.md', '.gitleaks.toml', 'LICENSE', 'COPYRIGHT', '.gitignore', '.
          'CHANGELOG.md', 'AGENTS.md', '.github', 'Config', 'docs', 'Assets', 'Apps', 'Services',
          'Packages', 'Scripts', 'Tests', 'Dependencies', 'Engines', 'Vendor'}
 EXCLUDED = {'.git', '.build', 'target', 'Private', '__pycache__', 'node_modules',
-            'xcuserdata', '.DS_Store', 'Local.xcconfig', '.env'}
+            'xcuserdata', '.DS_Store', 'Local.xcconfig', 'Generated.xcconfig', 'Toolchain.xcconfig', '.env'}
 
 
 def source_files(root):
