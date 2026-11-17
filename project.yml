@@ -233,7 +233,9 @@ targets:
     - path: Vendor/SwiftTerm/Sources/SwiftTerm
       excludes:
       - KittyGraphics.swift
+      - iOS/iOSTerminalView.swift
     - Engines/Terminal/TrunklineKittyGraphics.swift
+    - Engines/Terminal/TrunklineIOSTerminalView.swift
     resources:
     - Vendor/SwiftTerm/LICENSE
     settings:

@@ -29,7 +29,11 @@ final class HostModel: ObservableObject {
     @Published var hasPasscode = SecretStore.contains("host-passcode")
     private var listener: NWListener?
     private var authentication: PreparedHostAuthentication?
-    private let controls = MacControls()
+    private lazy var controls = MacControls(awakeState: { [weak self] in self?.keepAwake.remoteState },
+                                           setAwake: { [weak self] mode in
+        guard let self else { throw MacControlError.unavailable }
+        try self.keepAwake.applyRemotely(mode)
+    })
     private var controlsTask: Task<Void, Never>?
     private var snapshotTask: Task<Void, Never>?
     private let desktopPairing = DesktopPairingCoordinator()

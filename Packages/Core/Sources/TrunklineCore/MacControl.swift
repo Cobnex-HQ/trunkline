@@ -35,6 +35,7 @@ public enum WindowControl: String, Codable, CaseIterable, Sendable {
 public enum MacControlAction: Codable, Equatable, Sendable {
     case system(SystemControl)
     case power(MacPowerAction)
+    case keepAwake(AwakeMode)
     case volume(Double)
     case mute(Bool)
     case audioOutput(String)
@@ -49,6 +50,7 @@ public enum MacControlAction: Codable, Equatable, Sendable {
     }
     public func validate() throws {
         switch self {
+        case .keepAwake(.lidClosed): throw MacControlError.invalid
         case let .desktopDisplay(id):
             guard !id.isEmpty, id.utf8.allSatisfy({ (48...57).contains($0) }), let number = UInt32(id), number != 0 else { throw MacControlError.invalid }
         case let .moveWindow(_, displayID): guard displayID != 0 else { throw MacControlError.invalid }
@@ -130,6 +132,7 @@ public struct MacControlSnapshot: Codable, Equatable, Sendable {
     /// Nil means this host does not expose output selection. An empty array means no usable outputs.
     public var audioOutputs: [MacAudioOutput]?
     public var power: MacPowerCapability?
+    public var keepAwake: MacAwakeState?
     public var windowScope: MacWindowScope?
     public var requestID: UUID?
     public var windowPage: MacWindowPage?

@@ -10,6 +10,66 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testHistoryPagingStaysLocalExceptInFullScreenTerminalApps() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        let recorder = TerminalInputRecorder()
+        terminal.terminalDelegate = recorder
+        terminal.layoutIfNeeded()
+        terminal.feed(text: String(repeating: "history\r\n", count: 100))
+        try await terminalEventually { terminal.contentSize.height > 600 }
+        let bottom = terminal.contentOffset.y
+        terminal.pageHistory(up: true)
+        XCTAssertLessThan(terminal.contentOffset.y, bottom)
+        XCTAssertTrue(recorder.bytes.isEmpty, "Reading history must not send input to the shell")
+        terminal.jumpToLatest()
+        XCTAssertEqual(terminal.contentOffset.y, bottom, accuracy: 1)
+        terminal.feed(text: "\u{1b}[?1049h")
+        terminal.pageHistory(up: true)
+        XCTAssertEqual(recorder.bytes, [27, 91, 53, 126], "Full-screen apps need the actual Page Up key")
+    }
+
+    func testEndedTerminalRejectsKeyboardFocusButKeepsScrolling() {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        let window = UIWindow(frame: terminal.frame)
+        window.rootViewController = UIViewController()
+        window.rootViewController?.view.addSubview(terminal)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        XCTAssertTrue(terminal.becomeFirstResponder())
+        terminal.acceptsInput = false
+        XCTAssertFalse(terminal.isFirstResponder)
+        XCTAssertFalse(terminal.becomeFirstResponder())
+        XCTAssertTrue(terminal.isScrollEnabled && terminal.isUserInteractionEnabled)
+    }
+
+    func testTerminalOutputDoesNotPullReaderBackToBottom() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        terminal.layoutIfNeeded()
+        terminal.feed(text: (1...150).map { "line \($0)\r\n" }.joined())
+        try await terminalEventually { terminal.contentSize.height > terminal.bounds.height * 2 }
+        terminal.setContentOffset(CGPoint(x: 0, y: 100), animated: false)
+        terminal.feed(text: "new output\r\n")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(terminal.contentOffset.y, 100, accuracy: 1, "Keep the reader's scroll position when output arrives")
+        terminal.setContentOffset(CGPoint(x: 0, y: terminal.contentSize.height - terminal.bounds.height), animated: false)
+        terminal.feed(text: "following output\r\n")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertGreaterThanOrEqual(terminal.contentOffset.y, terminal.contentSize.height - terminal.bounds.height - 1, "Continue following when already at the bottom")
+    }
+
+    func testShellExitReturnsToSessionListAndKeepsHistoryAvailable() {
+        let model = ConnectionModel()
+        let id = UUID()
+        model.receiveTerminalSessions([TerminalSessionInfo(id: id, title: "Shell", kind: .shell, isRunning: true)])
+        model.selectedTerminalID = id
+        model.receiveTerminalSessions([TerminalSessionInfo(id: id, title: "Shell", kind: .shell, isRunning: false)])
+        XCTAssertNil(model.selectedTerminalID, "Exit must leave the dead input screen")
+        XCTAssertEqual(model.sessions.first?.id, id, "Keep the ended session available for reading")
+        model.selectedTerminalID = id
+        model.receiveTerminalSessions(model.sessions)
+        XCTAssertEqual(model.selectedTerminalID, id, "Refreshing must not close history the user reopened")
+    }
+
     func testRemoteTerminalCannotReadOrDeleteCompanionFiles() throws {
         let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
         let recorder = TerminalInputRecorder()

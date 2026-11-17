@@ -158,6 +158,18 @@ struct ControlsView: View {
                             HStack { media(.brightnessDown); Spacer(); media(.brightnessUp) }
                         }
                         Section("Mac") {
+                            if let awake = state.keepAwake {
+                                Picker("Keep awake", selection: Binding(get: { awake.mode }, set: { controls.perform(.keepAwake($0)) })) {
+                                    Text("Automatic").tag(AwakeMode.off)
+                                    Text("Mac").tag(AwakeMode.system)
+                                    Text("Mac and display").tag(AwakeMode.systemAndDisplay)
+                                    if awake.mode == .lidClosed { Text("Closed lid · set on Mac").tag(AwakeMode.lidClosed) }
+                                }.disabled(controls.pending != nil || awake.requiresLocalChange)
+                                Text(awake.requiresLocalChange
+                                     ? "Change closed-lid or recovery settings on the Mac first."
+                                     : "Active connections keep the Mac and display awake. Extra keep-awake stays on until you change it or quit the Mac app.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             Button("Clipboard", systemImage: "clipboard") { files.send?(.requestClipboard); clipboard = true }
                             Menu {
                                 Button("Lock Mac", systemImage: "lock") { confirm(.system(.lock), title: "Lock your Mac?") }

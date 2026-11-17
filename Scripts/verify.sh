@@ -7,6 +7,7 @@ export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/clang"
 ios_build_dir="${TRUNKLINE_IOS_DERIVED_DATA:-.build/ios-device}"
 python3 Scripts/verify-streaming-vendor.py
 Scripts/verify-input-ordering.sh
+sh Scripts/verify-terminal-power.sh
 python3 -m unittest discover -s Tests/Tooling
 clang -Wall -Wextra -Werror Services/DesktopSupervisor/main.c -o .build/TrunklineDesktopSupervisor
 python3 Scripts/test-desktop-supervisor.py .build/TrunklineDesktopSupervisor

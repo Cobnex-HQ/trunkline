@@ -31,6 +31,8 @@ jobs:
         run: Scripts/verify-input-ordering.sh
       - name: Swift core tests
         run: swift test --package-path Packages/Core --scratch-path .build/core --disable-sandbox
+      - name: Terminal and power regressions
+        run: sh Scripts/verify-terminal-power.sh
       - name: Rust transport tests
         run: cargo test --locked --manifest-path Packages/Transport/Cargo.toml
       - name: Public source policy

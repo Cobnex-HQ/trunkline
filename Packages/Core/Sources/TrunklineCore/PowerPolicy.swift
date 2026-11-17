@@ -12,6 +12,19 @@ public enum AwakeMode: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 }
+
+public struct MacAwakeState: Codable, Equatable, Sendable {
+    public let mode: AwakeMode
+    public let sessionActive: Bool
+    public let awayAccessActive: Bool
+    public let requiresLocalChange: Bool
+    public init(mode: AwakeMode, sessionActive: Bool, awayAccessActive: Bool, requiresLocalChange: Bool) {
+        self.mode = mode
+        self.sessionActive = sessionActive
+        self.awayAccessActive = awayAccessActive
+        self.requiresLocalChange = requiresLocalChange
+    }
+}
 /// Plan separately from the privileged operation so cancellation never commits state.
 public struct PowerTransition: Equatable, Sendable {
     public let changeDisabled: Bool?

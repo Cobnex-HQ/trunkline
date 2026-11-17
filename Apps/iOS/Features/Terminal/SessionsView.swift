@@ -86,11 +86,26 @@ struct SessionDetail: View {
     @ScaledMetric(relativeTo: .subheadline) private var terminalFontSize: CGFloat = 14
     var body: some View {
         VStack(spacing: 0) {
-            TerminalSurface(model: model, sessionID: session.id, showKeyboard: $keyboard, fontSize: terminalFontSize, input: input)
+            if !session.isRunning {
+                HStack {
+                    Text("Session ended").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("New session") { model.createTerminal(session.kind) }.disabled(model.isCreatingTerminal)
+                }.font(.subheadline).padding(12).background(.bar)
+            }
+            TerminalSurface(model: model, sessionID: session.id, showKeyboard: $keyboard, fontSize: terminalFontSize, input: input, acceptsInput: session.isRunning)
                 .background(.black)
             if !keyboard { ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    Button("Scroll history up", systemImage: "chevron.up") { input.terminal?.pageHistory(up: true) }
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                    Button("Scroll history down", systemImage: "chevron.down") { input.terminal?.pageHistory(up: false) }
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                    Button("Latest output", systemImage: "arrow.down.to.line") { input.terminal?.jumpToLatest() }
+                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                    if session.isRunning {
                     ForEach(TerminalShortcut.allCases, id: \.self) { terminalKey($0) }
+                    }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }.background(.bar) }
         }
@@ -100,11 +115,19 @@ struct SessionDetail: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button(keyboard ? "Hide keyboard" : "Show keyboard", systemImage: "keyboard") { keyboard.toggle() }.labelStyle(.iconOnly)
+                Button(keyboard ? "Hide keyboard" : "Show keyboard", systemImage: "keyboard") { keyboard.toggle() }.labelStyle(.iconOnly).disabled(!session.isRunning)
                 Menu {
+                    Button("Page up", systemImage: "chevron.up") { input.terminal?.pageHistory(up: true) }
+                    Button("Page down", systemImage: "chevron.down") { input.terminal?.pageHistory(up: false) }
+                    Button("Latest output", systemImage: "arrow.down.to.line") { input.terminal?.jumpToLatest() }
+                    Divider()
                     Button("Rename", systemImage: "pencil") { sessionName = session.title; renaming = true }
-                    Button("Paste text…", systemImage: "doc.on.clipboard") { showPaste = true }
-                    Button("End session", systemImage: "stop.circle", role: .destructive) { confirmClose = true }
+                    Button("Paste text…", systemImage: "doc.on.clipboard") { showPaste = true }.disabled(!session.isRunning)
+                    if session.isRunning {
+                        Button("End session", systemImage: "stop.circle", role: .destructive) { confirmClose = true }
+                    } else {
+                        Button("Remove session", systemImage: "trash", role: .destructive) { model.send(.closeTerminal(id: session.id)); model.selectedTerminalID = nil }
+                    }
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Session controls")
             }
         }

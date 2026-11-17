@@ -54,6 +54,12 @@ final class ClientControls: ObservableObject {
     }
     func perform(_ action: MacControlAction, confirmed: Bool = false) {
         guard pending == nil else { return }
+        if case .keepAwake = action {
+            guard let awake = snapshot?.keepAwake, !awake.requiresLocalChange else {
+                error = "Keep-awake controls are unavailable. Update the Mac app or check its Power settings."
+                return
+            }
+        }
         guard !action.requiresConfirmation || confirmed else {
             error = "Confirm this action before continuing."; return
         }

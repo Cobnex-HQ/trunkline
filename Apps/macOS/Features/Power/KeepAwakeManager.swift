@@ -24,6 +24,22 @@ final class KeepAwakeManager: ObservableObject {
     private var assertion: IOPMAssertionID = 0
     private var sessionAssertion: IOPMAssertionID = 0
     private var awayAssertion: IOPMAssertionID = 0
+    var remoteState: MacAwakeState {
+        MacAwakeState(mode: mode, sessionActive: sessionAssertion != 0,
+                      awayAccessActive: awayAssertion != 0,
+                      requiresLocalChange: mode == .lidClosed || needsRecovery)
+    }
+    /// Remote controls never run pmset or ask for local administrator approval.
+    func applyRemotely(_ newMode: AwakeMode) throws {
+        guard newMode != .lidClosed, mode != .lidClosed, !needsRecovery, try loadRecovery() == nil else {
+            throw PowerError.failed("Change closed-lid or recovery settings on the Mac first.")
+        }
+        let replacement = try createAssertion(for: newMode)
+        if assertion != 0 { IOPMAssertionRelease(assertion) }
+        assertion = replacement
+        mode = newMode
+        error = nil
+    }
     private var marker: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Trunkline", isDirectory: true).appendingPathComponent("sleep-policy.json")

@@ -16,6 +16,10 @@ Use your Mac’s desktop, terminal, files and controls from a native iPhone or i
 - QR pairing, saved Macs and one active controlling device per host.
 - Local Wi-Fi access and experimental away access using a Rust transport. Away access depends on network reachability and rendezvous infrastructure. It is not a server-free VPN or a promise to cross every NAT.
 
+In **Terminal**, swipe through output or use the up/down history buttons. New output follows only when you are at the bottom. `exit` returns to the session list. Reopen an ended session to read its output, start another session or remove it.
+
+In **Controls → Mac → Keep awake**, choose Automatic, Mac, or Mac and display. Active connections already keep the Mac and display awake. An extra hold lasts until changed or the Mac app quits. Closed-lid settings require local setup. Volume, media, brightness, apps, windows, clipboard and power actions are also in Controls. Some actions need Mac permissions.
+
 ## Distribution plan
 
 Planned distribution: TestFlight and App Store for iPhone/iPad, plus a signed, notarized Mac download. See [release preparation](docs/RELEASING.md), [App Store submission](docs/APP_STORE.md), and [privacy](docs/PRIVACY.md).

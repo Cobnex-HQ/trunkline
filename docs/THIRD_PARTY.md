@@ -32,6 +32,8 @@ The local `iOSAccessoryView.swift` adaptation changes its toggle icon and access
 
 `Engines/Terminal/TrunklineKittyGraphics.swift` replaces the pinned graphics parser at build time. On iOS it rejects file, temporary-file and shared-memory transports. A remote terminal may send inline graphics, but cannot use this protocol to read or delete companion files. Original notices remain intact.
 
+`TrunklineIOSTerminalView.swift` preserves the reader’s native scroll position when new output arrives. It follows output only when already at the bottom. Both adapted files replace their pinned originals in `project.yml`.
+
 The framework builds selected native sources, including the Mac-directory AccessibilityService stub needed on iOS. Debug settings disable example previews without vendor edits. Upstream API deprecation warnings still need an upgrade and regression check before production.
 
 ## MacOwl

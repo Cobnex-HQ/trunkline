@@ -72,6 +72,7 @@ final class ConnectionModel: ObservableObject {
         isCreatingTerminal = false
     }
     func receiveTerminalSessions(_ sessions: [TerminalSessionInfo]) {
+        let selectedWasRunning = self.sessions.first { $0.id == selectedTerminalID }?.isRunning == true
         self.sessions = sessions
         hasLoadedTerminals = true
         if let previousIDs = terminalIDsBeforeCreation,
@@ -80,6 +81,8 @@ final class ConnectionModel: ObservableObject {
             finishTerminalCreation()
         }
         if let selected = selectedTerminalID, !sessions.contains(where: { $0.id == selected }) { selectedTerminalID = nil }
+        if selectedWasRunning, let selected = selectedTerminalID,
+           sessions.first(where: { $0.id == selected })?.isRunning == false { selectedTerminalID = nil }
     }
     func sendTerminalPaste(_ text: String, id: UUID) {
         let bytes = Array(("\u{1b}[200~" + text + "\u{1b}[201~").utf8)

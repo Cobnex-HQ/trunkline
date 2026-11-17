@@ -59,6 +59,7 @@ struct TerminalSurface: UIViewRepresentable {
     @Binding var showKeyboard: Bool
     var fontSize: CGFloat = 14
     var input: TerminalShortcutInput? = nil
+    var acceptsInput = true
     func makeCoordinator() -> Coordinator { Coordinator(model: model, id: sessionID, keyboard: $showKeyboard, input: input) }
     func makeUIView(context: Context) -> SessionTerminalView {
         let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
@@ -69,6 +70,7 @@ struct TerminalSurface: UIViewRepresentable {
         let terminal = SessionTerminalView(frame: .zero, font: font)
         #endif
         terminal.terminalDelegate = context.coordinator
+        terminal.acceptsInput = acceptsInput
         input?.terminal = terminal
         terminal.onFocusChange = { [weak coordinator = context.coordinator, weak terminal] in
             guard let terminal else { return }
@@ -91,10 +93,11 @@ struct TerminalSurface: UIViewRepresentable {
     }
     func updateUIView(_ terminal: SessionTerminalView, context: Context) {
         context.coordinator.keyboard = $showKeyboard
+        terminal.acceptsInput = acceptsInput
         if terminal.font.pointSize != fontSize {
             terminal.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
         }
-        context.coordinator.requestKeyboard(showKeyboard, terminal: terminal)
+        context.coordinator.requestKeyboard(showKeyboard && acceptsInput, terminal: terminal)
     }
     static func dismantleUIView(_ terminal: SessionTerminalView, coordinator: Coordinator) {
         coordinator.active = false
@@ -132,6 +135,7 @@ struct TerminalSurface: UIViewRepresentable {
         }
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) { model?.send(.resizeTerminal(id: id, columns: newCols, rows: newRows)) }
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
+            guard active, (source as? SessionTerminalView)?.acceptsInput != false else { return }
             let bytes = Array(data)
             for offset in stride(from: 0, to: bytes.count, by: 16384) {
                 model?.send(.terminalInput(id: id, bytes: Data(bytes[offset..<min(bytes.count, offset+16384)])))
@@ -150,12 +154,32 @@ struct TerminalSurface: UIViewRepresentable {
 
 class SessionTerminalView: TerminalView {
     var onFocusChange: (() -> Void)?
+    var acceptsInput = true {
+        didSet { if !acceptsInput { _ = resignFirstResponder() } }
+    }
+    override var canBecomeFirstResponder: Bool { acceptsInput && super.canBecomeFirstResponder }
+    func pageHistory(up: Bool) {
+        if getTerminal().isCurrentBufferAlternate {
+            if acceptsInput { send(up ? EscapeSequences.cmdPageUp : EscapeSequences.cmdPageDown) }
+        } else {
+            let bottom = max(0, contentSize.height - bounds.height)
+            let next = contentOffset.y + (up ? -1 : 1) * bounds.height * 0.8
+            setContentOffset(CGPoint(x: 0, y: min(bottom, max(0, next))), animated: false)
+            flashScrollIndicators()
+        }
+    }
+    func jumpToLatest() {
+        setContentOffset(CGPoint(x: 0, y: max(0, contentSize.height - bounds.height)), animated: false)
+    }
     override init(frame: CGRect, font: UIFont?) {
         super.init(frame: frame, font: font)
         inputAccessoryView = TerminalInputAccessory(terminal: self)
+        showsVerticalScrollIndicator = true
+        keyboardDismissMode = .interactive
     }
     required init?(coder: NSCoder) { fatalError("Use init(frame:font:)") }
     override func becomeFirstResponder() -> Bool {
+        guard acceptsInput else { return false }
         let wasFocused = isFirstResponder
         let result = super.becomeFirstResponder()
         if isFirstResponder != wasFocused { onFocusChange?() }
@@ -317,8 +341,9 @@ final class TerminalInputAccessory: UIInputView {
         let navigation = UIMenu(title: "Navigation", children: [
             action("Home") { $0.send($0.getTerminal().applicationCursor ? EscapeSequences.moveHomeApp : EscapeSequences.moveHomeNormal) },
             action("End") { $0.send($0.getTerminal().applicationCursor ? EscapeSequences.moveEndApp : EscapeSequences.moveEndNormal) },
-            action("Page Up") { $0.send(EscapeSequences.cmdPageUp) },
-            action("Page Down") { $0.send(EscapeSequences.cmdPageDown) },
+            action("Page Up") { ($0 as? SessionTerminalView)?.pageHistory(up: true) },
+            action("Page Down") { ($0 as? SessionTerminalView)?.pageHistory(up: false) },
+            action("Latest output") { ($0 as? SessionTerminalView)?.jumpToLatest() },
             action("Insert") { $0.send(EscapeSequences.cmdInsert) },
             action("Forward Delete") { $0.send(EscapeSequences.cmdDelKey) },
             action("Back Tab") { $0.send(EscapeSequences.cmdBackTab) }

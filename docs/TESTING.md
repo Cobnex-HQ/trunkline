@@ -14,6 +14,7 @@ Run commands from the repository root with the development prerequisites install
 | Companion connection, keyboard or workspace | `Scripts/verify-companion.sh SIMULATOR_UDID` after setup |
 | UIKit viewport and touch mapping | `Scripts/verify-viewport.sh SIMULATOR_UDID` after setup, followed by hardware acceptance |
 | Client movement/button ordering | `Scripts/verify-input-ordering.sh` after dependency preparation |
+| Terminal exit and remote keep-awake | `sh Scripts/verify-terminal-power.sh` on macOS, then companion tests |
 | iOS release archive | `python3 Scripts/audit-ios.py --archive PATH.xcarchive --report .build/ios-preflight.json` |
 
 Run every suite affected by a change. Documentation edits need link, path and command checks, not an engine rebuild.

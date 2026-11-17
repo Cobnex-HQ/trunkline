@@ -10,7 +10,15 @@ import IOKit.pwr_mgt
 /// Accessibility requests run on this actor, never the UI/network main queue.
 actor MacControls {
     private let power: HostPower
-    init(power: HostPower = HostPower()) { self.power = power }
+    private let awakeState: @MainActor @Sendable () -> MacAwakeState?
+    private let setAwake: @MainActor @Sendable (AwakeMode) throws -> Void
+    init(power: HostPower = HostPower(),
+         awakeState: @escaping @MainActor @Sendable () -> MacAwakeState? = { nil },
+         setAwake: @escaping @MainActor @Sendable (AwakeMode) throws -> Void = { _ in throw MacControlError.unavailable }) {
+        self.power = power
+        self.awakeState = awakeState
+        self.setAwake = setAwake
+    }
     private var windows: [UUID: AXUIElement] = [:]
     private struct WindowListing {
         let requestedPID: Int32?
@@ -79,13 +87,15 @@ actor MacControls {
                 items = listing.items; page = listing.page; windowIssue = listing.error
             }
         } else { windowListing = nil; windows = [:] }
-        return MacControlSnapshot(apps: state.0, windows: items, displays: state.3,
+        var snapshot = MacControlSnapshot(apps: state.0, windows: items, displays: state.3,
                                   volume: HostAudio.volume, muted: HostAudio.muted,
                                   accessibility: trusted, frontmostApp: state.2, installedApps: installedApps,
                                   loadingApps: installedApps == nil && catalogTask != nil,
                                   audioOutputs: HostAudio.outputs, power: power.capability(),
                                   windowScope: MacWindowScope(requestedPID: windowAppPID, application: target, error: windowIssue),
                                   requestID: requestID, windowPage: page)
+        snapshot.keepAwake = await awakeState()
+        return snapshot
     }
 
     private func readWindows(target: MacApplication, requestedPID: Int32?, continuing: WindowListing?) async -> WindowListing {
@@ -159,6 +169,7 @@ actor MacControls {
                 guard let selectDesktopDisplay else { throw MacControlError.unavailable }
                 try await selectDesktopDisplay(id)
             case let .power(action): try power.perform(action)
+            case let .keepAwake(mode): try await setAwake(mode)
             case let .volume(value): try HostAudio.setVolume(value)
             case let .mute(value): try HostAudio.setMute(value)
             case let .audioOutput(uid): try HostAudio.selectOutput(uid)
