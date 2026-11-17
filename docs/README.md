@@ -25,6 +25,7 @@ Start with the [repository README](../README.md) to install tools and build from
 | [Third-party notices](THIRD_PARTY.md) | Dependency provenance, adaptations and licensing work |
 | [Releasing](RELEASING.md) | Separate Mac distribution, signing, notarization and release gates |
 | [App Store](APP_STORE.md) | Companion export, metadata, reviewer access and submission preparation |
+| [App Store audit](APP_STORE_AUDIT.md) | Findings, release blockers, privacy reasons and device acceptance |
 
 ## Scope and limitations
 

@@ -1,6 +1,7 @@
 #import <XCTest/XCTest.h>
 #import <QuartzCore/QuartzCore.h>
 #import "StreamManager.h"
+#import "VideoDecoderRenderer.h"
 
 // Use the production formatter and substitute only the connection's counters.
 // No stream is started and no real host or credentials are accessed.
@@ -16,6 +17,15 @@
 @interface StreamStatisticsTests : XCTestCase
 @end
 @implementation StreamStatisticsTests
+- (void)testUnsupportedVideoCodecRequestsRecoveryWithoutTerminatingTheApp {
+    VideoDecoderRenderer *renderer = [[VideoDecoderRenderer alloc] initWithView:[UIView new]
+        callbacks:nil streamAspectRatio:16.0f / 9.0f useFramePacing:NO];
+    [renderer setupWithVideoFormat:0 width:1920 height:1080 frameRate:60];
+    DECODE_UNIT unit = {0}; unit.frameType = FRAME_TYPE_IDR;
+    // Picture buffers transfer ownership to the decoder, including on error.
+    unsigned char *picture = calloc(1, 8);
+    XCTAssertEqual([renderer submitDecodeBuffer:picture length:8 bufferType:BUFFER_TYPE_PICDATA decodeUnit:&unit], DR_NEED_IDR);
+}
 - (StreamManager *)managerWithConnection:(FixtureStatisticsConnection *)connection host:(NSString *)host {
     StreamConfiguration *config = [StreamConfiguration new];
     config.width = 1920; config.height = 1080; config.host = host;

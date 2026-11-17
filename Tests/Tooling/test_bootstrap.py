@@ -34,3 +34,19 @@ class BootstrapTests(unittest.TestCase):
             with self.assertRaises(ValueError): bootstrap.verify_git_files(root, entries)
             file.unlink()
             with self.assertRaises((ValueError, FileNotFoundError)): bootstrap.verify_git_files(root, entries)
+
+    def test_sdk_signature_check_rejects_ad_hoc_and_preserves_input(self):
+        import hashlib
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'sample.c'
+            source.write_text('int main(void) { return 0; }')
+            binary = Path(directory) / 'sample'
+            subprocess.run(['cc', str(source), '-o', str(binary)], check=True)
+            subprocess.run(['codesign', '--sign', '-', str(binary)], check=True, capture_output=True)
+            before = hashlib.sha256(binary.read_bytes()).hexdigest()
+            self.assertTrue(hasattr(bootstrap, 'verify_sdk_signature'), 'SDK verification must reject untrusted signatures without deleting them')
+            with self.assertRaises(subprocess.CalledProcessError) as failure:
+                bootstrap.verify_sdk_signature(binary, 'ABCDEFGHIJ')
+            self.assertNotIn(b'invalid requirement specification', failure.exception.stderr)
+            self.assertEqual(hashlib.sha256(binary.read_bytes()).hexdigest(), before)

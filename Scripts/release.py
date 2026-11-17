@@ -11,6 +11,7 @@ from pathlib import Path
 import plistlib
 import re
 import subprocess
+import sys
 import tempfile
 import uuid
 
@@ -88,11 +89,24 @@ def build_archive(args):
     print(('Unsigned validation archive (not installable): ' if args.unsigned else 'Release archive: ') + str(app))
 
 
+def ios_preflight(archive):
+    result = subprocess.run([sys.executable, str(ROOT / 'Scripts/audit-ios.py'), '--archive', str(archive)],
+                            capture_output=True, text=True)
+    if result.returncode:
+        try:
+            findings = json.loads(result.stdout)['findings']
+            detail = ', '.join(item['bundle'] + ': ' + item['code'] for item in findings)
+        except (ValueError, KeyError):
+            detail = result.stderr.strip() or 'Audit did not produce a report'
+        raise ValueError('iOS export blocked by preflight: ' + detail)
+
+
 def export_ios(archive, output, team):
     app = archive_app(archive, require_signed=True)
     info = plistlib.loads((app / 'Info.plist').read_bytes())
     if info.get('CFBundleSupportedPlatforms') != ['iPhoneOS']:
         raise ValueError('App Store companion export requires an iOS device archive.')
+    ios_preflight(archive)
     new_destination(output)
     with tempfile.TemporaryDirectory(prefix='trunkline-export-') as temporary:
         options = Path(temporary) / 'ExportOptions.plist'
@@ -104,7 +118,7 @@ def export_ios(archive, output, team):
 
 def verify_developer_id(path):
     try:
-        capture('codesign', '--verify', '--strict', '-R', DEVELOPER_ID, path)
+        capture('codesign', '--verify', '--strict', '-R', '=' + DEVELOPER_ID, path)
     except subprocess.CalledProcessError as error:
         raise ValueError(f'Developer ID Application signature required: {path.name}') from error
     details = capture('codesign', '-d', '--verbose=4', path)

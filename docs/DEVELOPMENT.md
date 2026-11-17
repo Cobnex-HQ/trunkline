@@ -55,6 +55,8 @@ The Mac script uses ad-hoc signing. For a stable signing identity or physical iO
 
 Pins live in `Dependencies/` and `Engines/Desktop`. Bootstrap verifies hashes, including cached downloads. Investigate mismatches instead of disabling checks. Dependency updates need upstream review, preserved notices, new hashes and integration tests.
 
+The November 2026 App Store audit updates OpenSSL to package 3.6.5000. Existing checkouts keep their old vendor tree until you move it aside. After confirming the pin change, retain that tree as a backup under `.build`, rerun `python3 Scripts/bootstrap.py`, and regenerate the project. Use fresh Derived Data after replacing an XCFramework if Xcode reports stale header or module errors. Bootstrap preserves and verifies the SDK publisher’s signature.
+
 Small dependencies are checked in. Bootstrap restores larger source trees and the OpenSSL XCFramework. Desktop recipes build the native libraries and pin the codec archive. Cloning does not require cached build output.
 
 ## Troubleshooting

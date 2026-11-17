@@ -7,8 +7,10 @@ in `Dependencies/required-notices.json` and it is included in both apps.
 OpenSSL 3.x uses Apache-2.0. The iOS XCFramework's `opensslv.h` retains its original
 OpenSSL Project Authors copyright and licence reference. The bundler preserves
 that file alongside this full text. The downloaded framework contains no separate
-licence file. This supplements the missing text. It does not establish completeness
-of the wrapper's notices, matching sources, or its build dependencies. See
+licence file. `OpenSSL-Wrapper/LICENSE.txt` is the unmodified wrapper notice from
+`krzyzanowskim/OpenSSL` revision `0a6149bff4fb00921ce0ec1811f726b166638095`.
+Both texts are pinned by hash and bundled. This does not establish completeness
+of the build dependencies or App Store compatibility. See
 `docs/THIRD_PARTY.md` for the audit findings and release requirements.
 
 Other original notices remain in their dependency trees and application resources.

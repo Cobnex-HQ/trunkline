@@ -26,6 +26,16 @@ def verify_sha256(path, expected):
         raise ValueError(f'Checksum mismatch: {path}. Inspect the cache; nothing was overwritten.')
 
 
+def verify_sdk_signature(framework, team):
+    """Require the pinned publisher's Apple signature without modifying SDK bytes."""
+    import re
+    if not re.fullmatch(r'[A-Z0-9]{10}', team):
+        raise ValueError('Invalid SDK signing team')
+    requirement = f'anchor apple generic and certificate leaf[subject.OU] = "{team}"'
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', '-R', '=' + requirement,
+                    str(framework)], check=True, capture_output=True)
+
+
 def verify_git_files(root, entries):
     for item in entries:
         data = (root / item['path']).read_bytes()
@@ -121,14 +131,12 @@ def bootstrap(root, check=False):
             pending = Path(temporary) / 'payload'; pending.mkdir()
             subprocess.run(['ditto', '-x', '-k', str(archive), str(pending)], check=True)
             framework = pending / 'OpenSSL.xcframework'
-            # This is the documented preparation of the pinned upstream archive:
-            # remove only its outer container signature. Framework slice bytes stay pinned.
-            signature = framework / '_CodeSignature'
-            if signature.exists(): shutil.rmtree(signature)
+            verify_sdk_signature(framework, openssl['signingTeam'])
             verify_files(pending, openssl['files'])
             shutil.copyfile(records / 'openssl.json', pending / 'PROVENANCE.json')
             pending.rename(destination)
     verify_files(destination, openssl['files'])
+    verify_sdk_signature(destination / 'OpenSSL.xcframework', openssl['signingTeam'])
     print('Verified pinned client sources, libraries, terminal and crypto framework.')
 
 

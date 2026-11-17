@@ -183,7 +183,6 @@ targets:
         ITSAppUsesNonExemptEncryption: true
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-          NSAllowsArbitraryLoads: true
         UISupportedInterfaceOrientations~ipad:
         - UIInterfaceOrientationPortrait
         - UIInterfaceOrientationPortraitUpsideDown
@@ -231,7 +230,10 @@ targets:
     type: framework
     platform: iOS
     sources:
-    - Vendor/SwiftTerm/Sources/SwiftTerm
+    - path: Vendor/SwiftTerm/Sources/SwiftTerm
+      excludes:
+      - KittyGraphics.swift
+    - Engines/Terminal/TrunklineKittyGraphics.swift
     resources:
     - Vendor/SwiftTerm/LICENSE
     settings:

@@ -499,8 +499,9 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
             formatDesc = [self createAV1FormatDescriptionForIDRFrame:fullFrameData];
         }
         else {
-            // Unsupported codec!
-            abort();
+            // A negotiation mismatch must not terminate the companion.
+            // The common recovery path below frees the picture buffer.
+            Log(LOG_E, @"Unsupported video format: %d", videoFormat);
         }
     }
     

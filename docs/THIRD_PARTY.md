@@ -20,7 +20,7 @@ Trunkline’s adapted client files retain upstream copyrights and dated modifica
 | `TrunklineStreamView.m` | Weak delegate and timer references |
 | `TrunklineDataManager.m` | Initialise the settings ID so saving direct-touch mode succeeds |
 | `Engines/Client/TrunklineInputStream.c` | Coalesce movement only between button events, preserving tap and drag targets |
-| `TrunklineVideoDecoderRenderer.m` | Keep the display link running during UIKit gestures |
+| `TrunklineVideoDecoderRenderer.m` | Keep video running during UIKit gestures and recover from unsupported codecs |
 
 Both Moonlight licence files retain the exact App Store exception. It does not extend automatically to Sunshine, other dependencies or all Trunkline contributions. Trunkline’s root licence is unchanged. Upstream names remain in legal credits without implying endorsement or trademark permission.
 
@@ -29,6 +29,8 @@ Both Moonlight licence files retain the exact App Store exception. It does not e
 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), MIT. Tag `v1.11.2`, commit `b1262db5b6bea699a8260a8c66999436c508ca56`. Original notices, including xterm.js/SourceLair/Christopher Jeffrey credits, remain in `Vendor/SwiftTerm/LICENSE` and `Apps/iOS/Resources/SwiftTerm-LICENSE.txt`.
 
 The local `iOSAccessoryView.swift` adaptation changes its toggle icon and accessibility labels without changing input behaviour. Trunkline presents its own accessory through `TerminalSurface.swift`, using SwiftTerm’s public input/modifier API and escape sequences. The upstream accessory remains in the framework.
+
+`Engines/Terminal/TrunklineKittyGraphics.swift` replaces the pinned graphics parser at build time. On iOS it rejects file, temporary-file and shared-memory transports. A remote terminal may send inline graphics, but cannot use this protocol to read or delete companion files. Original notices remain intact.
 
 The framework builds selected native sources, including the Mac-directory AccessibilityService stub needed on iOS. Debug settings disable example previews without vendor edits. Upstream API deprecation warnings still need an upgrade and regression check before production.
 
@@ -48,7 +50,7 @@ The framework builds selected native sources, including the Mac-directory Access
 | SDL 2 | zlib-style terms, Sam Lantinga. Original `libs/SDL2/include/SDL_copying.h` in MoonlightSource. Header reports 2.28.5 |
 | FFmpeg | Terms depend on build options and dependencies. Companion header: `N-112686-g3f890fbfd9`. Desktop artifact: `Engines/Desktop/dependencies.json`. Exact sources, flags and full notices still need verification |
 | Opus | BSD-style terms and additional notices. Desktop 1.6.1 COPYING is staged from verified source. Companion source/terms remain unverified. Its script names 1.3.1, which does not prove the binary version |
-| OpenSSL | Apache-2.0 for 3.x. Companion package 3.6.3000 reports OpenSSL 3.6.3 in its headers. Header notice and full Apache text are bundled. Desktop 3.5.9 licence is staged. Wrapper provenance remains unresolved |
+| OpenSSL | Apache-2.0 for 3.x. Companion package 3.6.5000 contains OpenSSL 3.6.5. Release digest, source revision and publisher signature are pinned in `Dependencies/openssl.json`. Header, wrapper licence and Apache text are bundled. Desktop 3.5.9 licence is staged |
 | miniupnpc | BSD-3-Clause. Desktop 2.3.3 licence is staged from verified source |
 | Boost | Boost Software License 1.0 and component-specific notices, collected from prepared sources |
 | nlohmann/json | MIT and third-party notices, collected from prepared sources |
@@ -65,7 +67,7 @@ Apple SDK frameworks/libraries retain Apple’s terms. The engine’s generated 
 **Still required before public binaries:**
 
 - Review **42 of 367 external Cargo packages** with no standalone notice matching the collector’s rules. All declare licence metadata and some contain inline grants. Reconcile `ThirdParty/NOTICE-REVIEW.json` with exact upstream terms and target usage.
-- Verify OpenSSL wrapper sources, build and notices. Its recorded GitHub revision returned HTTP 404 during the audit. A local header and checksum do not resolve that gap. Recover verifiable sources or replace the artifact.
+- Review the replacement OpenSSL build and its privacy declarations. The old invalid source revision was replaced with verified wrapper revision `0a6149bff4fb00921ce0ec1811f726b166638095`. Bootstrap verifies the publisher’s Apple signature and preserves it. The framework’s empty required-reason declaration still needs resolution before App Store export.
 - Supply exact corresponding sources and build instructions for codecs and modified GPL components.
 - Complete native, Rust and web notices for each shipped target, then review App Store compatibility for the full companion and Trunkline contributions.
 

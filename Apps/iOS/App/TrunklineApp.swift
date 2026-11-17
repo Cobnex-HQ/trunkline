@@ -82,6 +82,7 @@ struct ConnectView: View {
     @State private var forget = false
     @State private var passcodeFocused = false
     @State private var usePasscode = false
+    @State private var showHelp = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var pairing: PairingDetails? { try? PairingDetails.parse(model.pairingText) }
     private var connecting: Bool { model.phase != .setup }
@@ -166,6 +167,7 @@ struct ConnectView: View {
                 }
                 Section { AppearancePicker() }
                 Section {
+                    Button("Help and Mac setup", systemImage: "questionmark.circle") { showHelp = true }
                     Link("Privacy notice", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md")!)
                     Link("Open-source acknowledgments", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/THIRD_PARTY.md")!)
                 }
@@ -201,6 +203,7 @@ struct ConnectView: View {
             }
             }
             .sheet(isPresented: $scanner) { PairingScanner { link in if let url = URL(string: link) { model.receivePairingLink(url) } } }
+            .sheet(isPresented: $showHelp) { AppHelpView() }
         }
     }
     private func connect() { passcodeFocused = false; model.connect() }

@@ -10,6 +10,26 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testRemoteTerminalCannotReadOrDeleteCompanionFiles() throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        let recorder = TerminalInputRecorder()
+        terminal.terminalDelegate = recorder
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("tty-graphics-protocol-" + UUID().uuidString)
+        let pixels = Data([255, 0, 0, 255])
+        try pixels.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let encoded = Data(file.path.utf8).base64EncodedString()
+        for transport in ["f", "t", "s"] {
+            recorder.bytes = []
+            terminal.feed(text: "\u{1b}_Ga=t,t=\(transport),f=32,s=1,v=1,i=17;\(encoded)\u{1b}\\")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "Remote output must never delete a companion file")
+            XCTAssertTrue(String(decoding: recorder.bytes, as: UTF8.self).contains("ENOTSUP"), "Remote file and shared-memory transports must be rejected")
+        }
+        recorder.bytes = []
+        terminal.feed(text: "\u{1b}_Ga=t,t=d,f=32,s=1,v=1,i=18;\(pixels.base64EncodedString())\u{1b}\\")
+        XCTAssertTrue(String(decoding: recorder.bytes, as: UTF8.self).contains("OK"), "Inline images must keep working")
+    }
+
     func testPasscodeRevealPreservesFocusSelectionAndSubsequentTyping() throws {
         let type = try XCTUnwrap(NSClassFromString("Trunkline.ConnectionPasscodeTextField") as? UITextField.Type,
                                  "The connection form needs a native, focus-preserving passcode field")

@@ -8,3 +8,5 @@
 *.pdf binary
 # Integrity manifests describe exact upstream bytes, including original line endings.
 Vendor/** -text
+# Preserve supplemental upstream licence texts byte for byte.
+Licenses/** -text -whitespace

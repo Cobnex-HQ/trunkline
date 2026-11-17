@@ -97,11 +97,15 @@ struct ExperienceReview: View {
         _model = StateObject(wrappedValue: model)
     }
     var body: some View {
+        if ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] == "help" {
+            AppHelpView()
+        } else {
         ConnectedTabs(model: model, initialSelection: WorkspaceSection(rawValue: ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] ?? "desktop") ?? .desktop)
             .overlay(alignment: .topLeading) {
                 Text("PREVIEW").font(.caption2).dynamicTypeSize(.large).foregroundStyle(.secondary)
                     .padding(6).background(.regularMaterial, in: Capsule()).padding(6).allowsHitTesting(false)
             }
+        }
     }
 }
 #endif

@@ -8,6 +8,7 @@ struct MacSwitchMenu: View {
     @ObservedObject var model: ConnectionModel
     @State private var pending: SavedMac?
     @State private var addMac = false
+    @State private var showHelp = false
     var body: some View {
         Menu {
             ForEach(model.savedMacs) { mac in
@@ -17,7 +18,9 @@ struct MacSwitchMenu: View {
             }
             Divider()
             Button("Add Mac", systemImage: "plus") { addMac = true }
+            Button("Help and privacy", systemImage: "questionmark.circle") { showHelp = true }
         } label: { Label("Macs", systemImage: "desktopcomputer") }
+        .sheet(isPresented: $showHelp) { AppHelpView() }
         .confirmationDialog("Switch to \(pending?.name ?? "another Mac")?", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }), titleVisibility: .visible) {
             if let mac = pending { Button("Disconnect and switch") { model.switchMac(mac.id); pending = nil } }
             Button("Cancel", role: .cancel) { pending = nil }

@@ -2,6 +2,8 @@
 
 The companion is planned for TestFlight and the App Store. The Mac host will be a separate signed, notarized download. Neither listing is public yet.
 
+**Not ready to submit.** The [App Store audit](APP_STORE_AUDIT.md) records fixes, blocking SDK/privacy and licensing findings, and device tests still needed. Passing compilation does not imply approval.
+
 ## Prepare an archive
 
 Run development setup and generate the project. Use a paid Apple Developer team with access to the bundle ID. Export requires Apple Distribution or Xcode-managed signing. Keep local settings in ignored `Config/Local.xcconfig`.
@@ -10,11 +12,15 @@ Run development setup and generate the project. Use a paid Apple Developer team 
 python3 Scripts/dev.py ios
 python3 Scripts/release.py archive ios --team YOURTEAMID \
   --output dist/Trunkline-iOS.xcarchive
+python3 Scripts/audit-ios.py --archive dist/Trunkline-iOS.xcarchive \
+  --report dist/ios-preflight.json
 python3 Scripts/release.py ios-export --team YOURTEAMID \
   --archive dist/Trunkline-iOS.xcarchive --output dist/ios-export
 ```
 
 Replace `YOURTEAMID` with your ten-character team ID. `ios-export` creates a local export without uploading. Validate and upload through Xcode Organizer, or upload the IPA with Transporter. Complete external TestFlight review before beta testing, then submit to App Review.
+
+Export runs the archive preflight and stops on unresolved findings. It checks configuration, selected required-reason API imports and the notice review inventory. It does not replace source review, licence clearance or Apple validation. Do not remove findings merely to make export pass.
 
 Update `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`, then regenerate before each upload. Check bundle-ID availability. Forks need their own identifiers and signing assets.
 
@@ -37,6 +43,23 @@ Unsigned archives only check compilation. They cannot be installed or exported f
 - Complete encryption/export declarations. The app currently declares non-exempt encryption. Do not change this to bypass review questions.
 - Review required-reason APIs, permission descriptions, IPv6-only behaviour and ATS exceptions. Initial desktop discovery uses HTTP. Justify its scope or narrow it after testing.
 - Check licences for the full dependency graph and Trunkline’s contributions. Moonlight’s App Store exceptions do not cover unrelated components. Retain notices and corresponding source.
+
+## Listing draft
+
+- **Name:** Trunkline
+- **Subtitle:** Your Mac, within reach
+- **Suggested category:** Productivity
+- **Keywords:** remote desktop,Mac,terminal,files,keyboard,trackpad,screen sharing
+
+> Control your Mac from your iPhone or iPad. View its desktop, use the keyboard and pointer, open terminal sessions, transfer files and access Mac controls.
+>
+> Pinch to zoom, rotate for a wider desktop, switch available displays and use Mission Control. Save multiple Macs and choose which one to connect to. Each Mac accepts one controlling device at a time.
+>
+> Requires the separate Trunkline host on a Mac running macOS 15 or later. Pair on your local network using the Mac’s QR code and connection passcode. Away access requires additional setup and depends on your network.
+>
+> Trunkline is open source. No Trunkline account is required.
+
+Use the [privacy notice](https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md) and [support tracker](https://github.com/Cobnex-HQ/trunkline/issues) as listing URLs. Add a working public Mac download URL before submission. Choose the age rating from Apple’s questionnaire and complete privacy/encryption answers from the final build, not this draft.
 
 ## App Review notes draft
 

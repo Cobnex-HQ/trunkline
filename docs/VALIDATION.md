@@ -2,6 +2,16 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Companion App Store audit — 2026-11-17
+
+- Passed: 35 tooling tests, 100 shared Swift tests and 11 Rust tests.
+- iPhone 18 Pro and iPad mini simulators on iOS 27.2 each passed 54 companion tests and 3 viewport tests. The new regressions reproduce and prevent terminal file access and an unsupported-codec crash.
+- Built a clean unsigned iOS Release archive, version 0.1.0, build 3. Incremental archiving initially failed after the SDK replacement. A separate clean Derived Data directory succeeded. Xcode emitted transient dependency-scan diagnostics despite returning success.
+- Verified all 15 mandatory notice originals inside the archive, the 1024-pixel opaque App Store icon, absence of simulator fixture strings, and no imported local process-launch APIs among the selected symbols checked in the app, SwiftTerm and OpenSSL.
+- Reviewed native help on iPhone in light mode and iPad in dark mode. This is a visual spot check, not full accessibility or orientation acceptance.
+- Archive preflight reports two open findings: OpenSSL file-API declarations and 42 dependency notices. The app’s declared reasons and SwiftTerm import checks pass. Export is blocked until findings are resolved.
+- Owner is not enrolled in the paid Developer Program. No signed export, upload, device installation or public binary release was performed. [Remaining App Store work](APP_STORE_AUDIT.md) includes licensing, privacy answers, reviewer access and physical-device/network tests.
+
 ## Hardware confirmation — 2026-11-16
 
 The user confirmed iPad pointer placement and menu clicks after granting Mac input permission. Keyboard focus/scrolling, passcode visibility, Mission Control and Spaces gestures also worked. Both devices have the updated companion, but matching hands-on iPhone checks remain pending.
