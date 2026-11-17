@@ -1,6 +1,6 @@
 # Developer documentation
 
-Start with the [repository README](../README.md) for prerequisites and a first local build. Trunkline is an early-development source release; a successful build does not establish release readiness or connectivity on every network.
+Start with the [repository README](../README.md) to install tools and build from source. Check [validation status](VALIDATION.md) for known limits.
 
 ## First contribution
 
@@ -28,4 +28,4 @@ Start with the [repository README](../README.md) for prerequisites and a first l
 
 ## Scope and limitations
 
-These guides cover working in this repository. They are not a stable public SDK or a versioned wire-protocol specification. Check the shared message definitions and both endpoints before changing protocol behaviour. Initial Apple-service distribution steps and the remaining device/network matrix are documented as pending; do not treat a validation-only archive as an installable release.
+These guides describe the repository, not a stable SDK or versioned protocol. Check both endpoints before changing messages. Apple distribution and device/network validation remain incomplete. Unsigned validation archives cannot be installed.

@@ -1,6 +1,6 @@
 # Contributing to Trunkline
 
-Thanks for helping improve Trunkline. Start with the [developer documentation](docs/README.md), follow the setup commands in [README.md](README.md), and read [the architecture guide](docs/ARCHITECTURE.md) before changing module boundaries.
+Start with the [developer guide](docs/README.md) and [setup instructions](README.md). Read [architecture](docs/ARCHITECTURE.md) before changing module boundaries.
 
 ## Workflow
 
@@ -10,9 +10,9 @@ Thanks for helping improve Trunkline. Start with the [developer documentation](d
 4. Add a regression test for a reproducible bug. Run the relevant suites in docs/TESTING.md and report exactly what you tested, including device/OS combinations without personal identifiers.
 5. Open a pull request describing the problem, resulting behaviour, validation and remaining limitations. For visual changes, include screenshots without private content.
 
-Avoid unrelated formatting changes. Swift uses four spaces, descriptive types and native platform APIs. Rust follows `cargo fmt`; Python tooling uses the standard library unless a dependency is justified. The pinned vendor trees are integrity checked: put engine modifications in `Engines/Desktop/Patches`, and update manifests deliberately when changing a vendored source.
+Keep formatting changes focused. Use four-space Swift indentation, descriptive names and native APIs. Run `cargo fmt` for Rust. Prefer Python’s standard library. Put engine changes in `Engines/Desktop/Patches` and review integrity manifests when updating vendor files.
 
-New contributions must be compatible with the project's GPL-3.0 licence. Retain third-party notices and document new dependencies and their exact source. Do not submit code you cannot licence for this project.
+Contributions must be compatible with GPL-3.0. Retain original notices and record each dependency’s exact source. Submit only code you have the right to license.
 
 ## Reporting issues
 

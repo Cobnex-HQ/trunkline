@@ -1,32 +1,32 @@
 # Trunkline privacy notice
 
-Last updated: 17 November 2026. This notice describes the current Trunkline source release and development builds. Public App Store privacy disclosures must be checked against the exact release binary before submission.
+Updated 17 November 2026. Covers the current source release and development builds. Verify App Store disclosures against the exact release binary.
 
-Trunkline connects an iPhone or iPad to a Mac chosen by its user. There is no Trunkline-operated account service, advertising service or analytics backend in this release.
+Trunkline connects your iPhone or iPad to your chosen Mac. This release has no Trunkline-operated account, advertising or analytics service.
 
 ## Information used by the app
 
-- **Pairing and security:** Mac names, network addresses, host certificate fingerprints and connection preferences identify saved Macs. Connection secrets and identities are stored locally using platform security facilities, including Keychain. Treat pairing QR codes as sensitive.
-- **Remote content:** desktop video/audio, pointer and keyboard input, terminal commands/output, selected files and clipboard content pass between the paired devices to provide the requested features. Trunkline does not upload that content to a publisher-operated storage service. Files copied to a device remain there until the user removes them.
-- **Permissions:** camera access scans pairing QR codes; Face ID/Touch ID can unlock saved credentials; local-network access connects devices. The Mac separately requires screen-capture and input-control permissions. An operating-system permission does not grant access to an unpaired device.
-- **Diagnostics:** local logs can include connection events, device/network addresses, application names and errors. Support reports or screenshots may contain personal information; review and redact them before sharing. This release has no automatic publisher-operated diagnostic upload.
+- **Pairing:** saved Mac names, addresses, certificate fingerprints and preferences identify connections. Secrets and identities stay in local platform storage, including Keychain. Pairing QR codes are sensitive.
+- **Remote content:** desktop video/audio, input, terminal commands/output, files and clipboard content pass between paired devices. Trunkline does not upload them to publisher-operated storage. Transferred files remain until you remove them.
+- **Permissions:** the camera scans QR codes, Face ID/Touch ID unlocks saved credentials, and local-network access connects devices. The Mac needs capture and input permissions. OS approval does not authorise unpaired devices.
+- **Diagnostics:** local logs may contain connection events, addresses, app names and errors. Redact logs and screenshots before sharing. This release does not automatically upload diagnostics to the publisher.
 
 ## Away access and third parties
 
-When Away access is configured, its peer-discovery and connection-establishment infrastructure can observe network metadata, including IP addresses, peer identifiers and connection timing. This infrastructure can be operated by third parties. The current transport allows application traffic only on an authenticated direct connection; it does not use a relay fallback for desktop, terminal or file traffic. Do not interpret this as anonymity or guaranteed connectivity on every network.
+Away-access discovery services may be operated by third parties and can observe IP addresses, peer IDs and connection timing. App traffic uses an authenticated direct connection, with no relay fallback for desktop, terminal or files. This does not provide anonymity or guarantee connectivity.
 
-Apple processes App Store/TestFlight downloads and any diagnostics or feedback shared through those services under Apple's policies. Visiting the project's GitHub pages or filing an issue also shares information with GitHub. Their handling of that information is separate from the local app.
+Apple handles App Store/TestFlight downloads, diagnostics and feedback under its policies. Visiting project pages or filing issues shares information with GitHub under its policies.
 
 ## Control and retention
 
-Disconnect to end a connection. Use Forget Mac to remove a saved pairing from the companion, and revoke desktop pairings on the host when a device should no longer have access. These actions do not delete files already transferred, terminal output saved elsewhere, operating-system records or copies shared in support reports. Removing the app is not a guarantee that Keychain items, backups or externally saved files are erased.
+Disconnect ends a connection. Forget Mac removes a saved companion pairing. Revoke host desktop pairings to remove device access. These actions do not delete transferred files, saved terminal output, OS records or support reports. Uninstalling may leave Keychain items, backups and externally saved files.
 
-Disable Away access if you do not want its connection-establishment activity. You can also revoke camera, network, screen-capture and input permissions in system settings; affected features will stop working.
+Disable Away access to stop its connection setup activity. Revoke camera, network, capture or input permissions in system settings to disable those features.
 
-The project does not sell user data or embed advertising/tracking SDKs. No claim is made about the independent retention policies of network infrastructure, Apple, GitHub or a modified third-party build.
+Trunkline does not sell user data or include advertising/tracking SDKs. Infrastructure providers, Apple, GitHub and modified third-party builds have their own retention policies.
 
 ## Questions and security reports
 
 Project support: https://github.com/Cobnex-HQ/trunkline/issues
 
-For security issues, use the repository's private vulnerability-reporting channel described in [SECURITY.md](../SECURITY.md). Never put passwords, pairing links, private files or unredacted diagnostic logs into a public issue.
+Report security issues privately through [SECURITY.md](../SECURITY.md). Keep passwords, pairing links, private files and unredacted logs out of public issues.

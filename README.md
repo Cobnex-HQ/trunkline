@@ -4,9 +4,9 @@
   <p>A native Mac workspace on your iPhone and iPad.</p>
 </div>
 
-Trunkline combines remote desktop, terminal sessions, files and Mac controls in a SwiftUI companion app. The Mac host bundles its desktop engine, connection transport and supervisor; users do not need to run a separate streaming application.
+Use your Mac’s desktop, terminal, files and controls from a native iPhone or iPad app. The Mac host includes the streaming engine and connection helpers.
 
-**Status: early development.** This is a source release for contributors and local builds, not a notarized public installer. Hardware, multi-monitor and network compatibility are still being tested. Do not depend on it as your only way to reach an unattended Mac.
+**Status: early development.** Build from source for local use and contribution. Public installers are not available yet. Hardware, multi-monitor and network testing remain incomplete. Keep another way to reach an unattended Mac.
 
 ## Features
 
@@ -14,15 +14,15 @@ Trunkline combines remote desktop, terminal sessions, files and Mac controls in 
 - Desktop streaming, direct touch, trackpad input, zoom and monitor selection.
 - Named terminal sessions, file transfers, app/window controls and keep-awake settings.
 - QR pairing, saved Macs and one active controlling device per host.
-- Local Wi-Fi access and experimental away access using a Rust transport. Away access depends on network reachability and rendezvous infrastructure; it is not a server-free VPN or a promise to cross every NAT.
+- Local Wi-Fi access and experimental away access using a Rust transport. Away access depends on network reachability and rendezvous infrastructure. It is not a server-free VPN or a promise to cross every NAT.
 
 ## Distribution plan
 
-The iPhone/iPad companion will use TestFlight and the App Store. The Mac host will be a separate signed, notarized download with its engines bundled. Those public downloads are not available yet; the instructions below are for building from source. See [release preparation](docs/RELEASING.md), [App Store submission](docs/APP_STORE.md), and the [privacy notice](docs/PRIVACY.md).
+Planned distribution: TestFlight and App Store for iPhone/iPad, plus a signed, notarized Mac download. See [release preparation](docs/RELEASING.md), [App Store submission](docs/APP_STORE.md), and [privacy](docs/PRIVACY.md).
 
 ## Build and install on your Mac
 
-Requirements: **macOS 15 or newer**, full **Xcode 26 or newer** (open it once to install components), Python 3.10+, and [Homebrew](https://brew.sh). Both Apple silicon and Intel are supported by the build recipes; this checkout has been validated on Apple silicon. Building the desktop engine downloads several dependencies and can take a while on the first run.
+Requirements: **macOS 15+**, full **Xcode 26+**, Python 3.10+, and [Homebrew](https://brew.sh). Open Xcode once to install its components. Build recipes cover Apple silicon and Intel, but only Apple silicon has been validated. The first engine build downloads dependencies and takes longer.
 
 ```sh
 git clone https://github.com/Cobnex-HQ/trunkline.git
@@ -30,11 +30,11 @@ cd trunkline
 ./Scripts/setup-mac.sh
 ```
 
-The script installs the Brewfile tools, selects Python and Rust on PATH for this build, and builds/installs Trunkline. It does not change your global Rust toolchain. For an already configured environment, use `python3 Scripts/dev.py install` directly; `python3 Scripts/dev.py doctor` checks the required tools. Xcode must be the active developer directory; a Command Line Tools-only installation is insufficient.
+The script installs the Brewfile tools and builds Trunkline without changing your global Rust toolchain. If tools are already configured, use `python3 Scripts/dev.py install`. Run `python3 Scripts/dev.py doctor` to check them. Full Xcode must be active, not just Command Line Tools.
 
-The install command verifies pinned downloads, compiles the engine for your Mac, builds the host with local ad-hoc signing, verifies the app bundle, and installs it at `~/Applications/Trunkline.app`. Quit an existing app at that destination before installing. The previous installation is retained as `Trunkline.previous.app`. No administrator password or developer membership is needed for this local Mac build.
+Installation checks pinned downloads, builds and verifies the host and engine, then installs an ad-hoc-signed app at `~/Applications/Trunkline.app`. Quit that app before updating. The previous version is kept as `Trunkline.previous.app`. Local Mac builds need no administrator password or developer membership.
 
-Open Trunkline and complete macOS Screen Recording and Device Control and Data Access setup (called Accessibility on earlier macOS versions). macOS controls those permissions; development builds or signing changes can require approval again. Keychain access and unattended operation should be checked before relying on a newly built version.
+Open Trunkline and grant Screen Recording and Device Control and Data Access permissions, called Accessibility on earlier macOS versions. Signing changes can require approval again. Test saved credentials and remote access locally before leaving the Mac unattended.
 
 ## iPhone and iPad
 
@@ -42,20 +42,20 @@ Open Trunkline and complete macOS Screen Recording and Device Control and Data A
 python3 Scripts/dev.py ios
 ```
 
-In the generated Xcode project, select the **Trunkline** scheme, your device, and **your own** signing team. For personal signing settings, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig`. The local file is ignored by Git. Use Xcode to run the app on your device. A personal team can be used for development, subject to Apple's provisioning limits; distribution is a separate process.
+In Xcode, select **Trunkline**, your device and your own signing team. Copy `Config/Local.xcconfig.example` to ignored `Config/Local.xcconfig` for local signing settings. Run the app on your device. Personal signing supports development under Apple’s provisioning limits.
 
 Start access in the Mac app, pair the companion on the same network, and verify Desktop and Terminal before trying away access. See [development](docs/DEVELOPMENT.md) and [security](SECURITY.md).
 
 ## Desktop controls
 
-Tap the connection passcode field to open the software keyboard. The form scrolls the input into view; the eye button reveals or hides the passcode without interrupting typing. The passcode is hidden again when you leave the field.
+Tap the passcode field to open the keyboard and scroll it into view. The eye button shows or hides the passcode while typing. Leaving the field hides it again.
 
 In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch mode, tap to click and move one finger to drag. Pinch to zoom and use two fingers to pan while zoomed in.
 
 - Swipe **up with three fingers** for Mission Control, or **down** for App windows.
 - Swipe **left or right with three fingers** to move between the Mac’s Spaces.
 - The **Spaces and windows** menu offers the same actions without gestures. They use the Mac’s standard Control–Arrow shortcuts, which must be enabled on the host.
-- **Displays** selects a connected physical monitor, one at a time, preserving its proportions. Spaces are virtual desktops within a monitor; create or rearrange them in Mission Control.
+- **Displays** selects a connected physical monitor, one at a time, preserving its proportions. Spaces are virtual desktops within a monitor. Create or rearrange them in Mission Control.
 
 ## Repository map
 
@@ -63,7 +63,7 @@ In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch m
 | --- | --- |
 | `Apps/iOS` | Companion app, feature views, desktop client integration and design system |
 | `Apps/macOS` | Host app and desktop, terminal, controls, files and power features |
-| `Packages/Core` | Shared Swift protocol, identity, state and policy; independently testable |
+| `Packages/Core` | Shared Swift protocol, identity, state and policy. Independently testable |
 | `Packages/Transport` | Rust transport library, helper executable and C bridge |
 | `Services/DesktopSupervisor` | Small native desktop process supervisor |
 | `Engines/Desktop` | Pinned upstream revision, patches and dependency/build recipes |
@@ -73,7 +73,7 @@ In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch m
 | `Scripts` | Setup, build, verification and local packaging tools |
 | `Assets/Branding` | Glacier Fold vector sources and icon assets |
 
-`project.yml` is the Xcode project source of truth. `Scripts/dev.py setup` regenerates the ignored `.xcodeproj`. Downloads, build products, credentials and personal signing settings are excluded from version control.
+`project.yml` defines the Xcode project. Run `python3 Scripts/dev.py setup` to regenerate the ignored `.xcodeproj`. Build outputs, downloads, credentials and local signing settings stay out of Git.
 
 ## Contribute
 
@@ -83,6 +83,6 @@ Run `python3 Scripts/dev.py test` for the shared Swift, Rust and tooling suites.
 
 ## Licence and attribution
 
-Trunkline is distributed under [GNU GPL v3](LICENSE). Included and adapted components retain their original copyright and licence notices. The desktop and streaming integrations build on Sunshine and Moonlight; their names remain in required attribution even though the app uses Trunkline branding. SwiftTerm and MacOwl are also credited in [third-party notices](docs/THIRD_PARTY.md).
+Trunkline uses [GNU GPL v3](LICENSE). Sunshine, Moonlight, SwiftTerm, MacOwl and other components retain their original copyrights and licences. See [third-party notices](docs/THIRD_PARTY.md). Trunkline branding does not remove upstream attribution.
 
-No prebuilt app or binary release is published by this repository's CI. Publishing app binaries requires the corresponding-source, dependency licence, signing and platform-distribution checks described in [RELEASING.md](docs/RELEASING.md).
+CI publishes no app binaries. Public releases must meet the source, licence, signing and platform requirements in [RELEASING.md](docs/RELEASING.md).
