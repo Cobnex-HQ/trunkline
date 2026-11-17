@@ -14,6 +14,8 @@ struct ControlsView: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .caption) private var quickActionHeight: CGFloat = 64
+    @ScaledMetric(relativeTo: .body) private var quickActionIconSize: CGFloat = 24
+    @ScaledMetric(relativeTo: .caption) private var quickActionTitleHeight: CGFloat = 36
     @ObservedObject var files: ClientFiles
     var dismissible = false
     @Environment(\.dismiss) private var dismiss
@@ -234,14 +236,29 @@ struct ControlsView: View {
     }
     private func quickActions(columns: Int, enabled: Bool) -> some View {
         let minimum: CGFloat = 92
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
-            ForEach(Self.quickActionControls) { action in
-                Button { controls.perform(.system(action)) } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: action.symbol).font(.body)
-                        Text(action.title).font(.caption).multilineTextAlignment(.center).lineLimit(2, reservesSpace: true)
-                    }.frame(maxWidth: .infinity).frame(minHeight: quickActionHeight)
-                }.buttonStyle(.bordered).buttonBorderShape(.roundedRectangle).tint(Color("AccentColor")).disabled(!enabled)
+        // All six actions stay laid out while ViewThatFits changes column count.
+        // Lazy cells can retain stale symbol placement after an orientation change.
+        return VStack(spacing: 8) {
+            ForEach(0..<(Self.quickActionControls.count / columns), id: \.self) { row in
+                HStack(spacing: 8) {
+                    ForEach(Array(Self.quickActionControls[(row * columns)..<((row + 1) * columns)])) { action in
+                        Button { controls.perform(.system(action)) } label: {
+                            VStack(alignment: .center, spacing: 6) {
+                                Image(systemName: action.symbol)
+                                    .font(.body)
+                                    .frame(width: quickActionIconSize, height: quickActionIconSize, alignment: .center)
+                                Text(action.title)
+                                    .font(.caption)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .frame(height: quickActionTitleHeight, alignment: .center)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: quickActionHeight, alignment: .center)
+                        }.buttonStyle(.bordered).buttonBorderShape(.roundedRectangle).tint(Color("AccentColor")).disabled(!enabled)
+                    }
+                }
             }
         }.frame(minWidth: minimum * CGFloat(columns) + 8 * CGFloat(columns - 1))
     }
