@@ -131,8 +131,9 @@ struct ExperienceReview: View {
     var body: some View {
         reviewContent
             .overlay(alignment: .topLeading) {
-                Text("PREVIEW").font(.caption2).dynamicTypeSize(.large).foregroundStyle(.secondary)
-                    .padding(6).background(.regularMaterial, in: Capsule()).padding(6)
+                // Readiness must not cover a Back button or alter the layout under review.
+                Text("Preview").font(.system(size: 1)).foregroundStyle(.clear)
+                    .frame(width: 1, height: 1)
                     .accessibilityIdentifier("ui-review-ready")
                     .accessibilityValue(colorScheme == .dark ? "dark" : "light")
                     .allowsHitTesting(false)

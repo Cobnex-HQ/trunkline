@@ -265,10 +265,18 @@ final class TerminalInputAccessory: UIInputView {
         let fixedWidth = keyHeight + 8
         dismiss.frame = CGRect(x: bounds.width - right - fixedWidth, y: 4, width: fixedWidth, height: keyHeight)
         more.frame = CGRect(x: dismiss.frame.minX - 8 - fixedWidth, y: 4, width: fixedWidth, height: keyHeight)
-        scroll.frame = CGRect(x: left, y: 0, width: max(0, more.frame.minX - 8 - left), height: keyHeight + 8)
+        let available = max(0, more.frame.minX - 8 - left)
+        let minimumWidth = keys.reduce(CGFloat(44)) { width, button in
+            max(width, ceil(button.sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: keyHeight)).width))
+        }
+        let rowWidth = min(available, CGFloat(keys.count) * (minimumWidth + 8) - 8)
+        let visibleKeys = max(1, min(keys.count, Int((rowWidth + 8) / (minimumWidth + 8))))
+        let width = max(minimumWidth, (rowWidth - CGFloat(visibleKeys - 1) * 8) / CGFloat(visibleKeys))
+        // Fit complete, equally sized keys before More. Extra keys remain scrollable.
+        // Measuring titles also keeps accessibility text inside its touch target.
+        scroll.frame = CGRect(x: left, y: 0, width: rowWidth, height: keyHeight + 8)
         var x: CGFloat = 0
         for button in keys {
-            let width = max(44, ceil(button.sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: keyHeight)).width))
             button.frame = CGRect(x: x, y: 4, width: width, height: keyHeight)
             x += width + 8
         }

@@ -30,6 +30,26 @@ Repeat `--only-testing UIReviewScreenshots/UIReviewScreenshots/testFilesScreens`
 
 Screenshots support visual review. They are not pixel-diff assertions or a replacement for functional and physical-device tests.
 
+## Rotation and keyboard regressions
+
+Fresh screenshots do not test navigation transitions. Run these cases on both devices after changing workspace layout:
+
+```sh
+python3 Scripts/capture-ui-review.py \
+  --iphone EXISTING_IPHONE_UDID --ipad EXISTING_IPAD_UDID \
+  --appearance dark --orientation portrait \
+  --output .build/layout-check \
+  --only-testing UIReviewScreenshots/UIReviewScreenshots/testConnectedTerminalRotation \
+  --only-testing UIReviewScreenshots/UIReviewScreenshots/testPasscodeKeyboardRotation \
+  --only-testing UIReviewScreenshots/UIReviewScreenshots/testControlsRotation
+```
+
+Each case rotates portrait → landscape → portrait without relaunching. Terminal opens through the workspace and session list. It checks that the session uses the available width and stays above the keyboard accessory. Connection checks that a synthetic passcode remains visible and survives rotation and reveal/hide. Controls checks equal card sizes and that the sidebar does not cover the first action.
+
+The viewer case, `testDesktopViewerScreens`, also checks that Send text opens the keyboard and fits its editor between the navigation bar and keyboard. Run it in landscape on both devices.
+
+Also check a narrow iPad window and a hardware or floating keyboard on a device. Screenshots with a placeholder desktop cannot validate a live stream or pointer alignment.
+
 ## Capture details
 
 - The script sets theme and orientation in each generated `.xctestrun`. Captures use the full device display and account for EXIF orientation.

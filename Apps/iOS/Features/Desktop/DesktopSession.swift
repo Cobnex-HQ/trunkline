@@ -169,7 +169,7 @@ struct DesktopView: View {
                         Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(.secondary)
                             .frame(width: 36).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(model.name).font(.headline).fixedSize(horizontal: false, vertical: true)
+                            Text(model.name).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 5) {
                                 Circle().fill(desktop.hostReady ? Color.green : Color.orange).frame(width: 5, height: 5)
                                 Text(desktop.hostReady ? "Ready" : desktop.busy ? "Preparing" : desktop.error == nil ? "Not connected" : "Unavailable")
@@ -291,7 +291,6 @@ private struct DesktopScreen: View {
     let close: () -> Void
     @SwiftUI.State private var showControls = false
     @SwiftUI.State private var showGestures = false
-    @FocusState private var textFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
     @SwiftUI.State private var toolbarVisible = true
     @SwiftUI.State private var controller: UIViewController?
@@ -362,21 +361,13 @@ private struct DesktopScreen: View {
         }
         .persistentSystemOverlays(.hidden)
         .sheet(isPresented: $paste) {
-            NavigationStack {
-                Form {
-                    Section {
-                        TextEditor(text: $text).focused($textFocused).font(.system(.body, design: .monospaced)).frame(minHeight: 220)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to send")
-                        PasteButton(payloadType: String.self) { text = $0.joined(separator: "\n") }
-                    } footer: {
-                        Text("Review commands before sending. Newlines may execute them on your Mac.")
-                    }
-                }.nativeWorkspaceStyle().navigationTitle("Send text")
-                    .task { textFocused = true }
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { text = ""; paste = false } }
-                        ToolbarItem(placement: .confirmationAction) { Button("Send") { engine.sendText(text); text = ""; paste = false }.disabled(text.isEmpty || text.utf8.count > 65536) }
-                    }
+            DesktopTextSheet(text: $text) {
+                text = ""
+                paste = false
+            } send: {
+                engine.sendText(text)
+                text = ""
+                paste = false
             }
         }
     }
@@ -499,6 +490,47 @@ private struct DesktopScreen: View {
         Button(title) { engine.sendKey(code, modifiers: modifiers) }
     }
 
+}
+
+/// Keep focus inside the presented hierarchy. The editor follows the remaining
+/// container height when the keyboard, rotation or an iPad window resizes it.
+private struct DesktopTextSheet: View {
+    @Binding var text: String
+    let cancel: () -> Void
+    let send: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geometry in
+                Form {
+                    Section {
+                        TextEditor(text: $text)
+                            .focused($focused)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(height: max(44, min(180, geometry.size.height - 120)))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("Text to send")
+                        PasteButton(payloadType: String.self) { text = $0.joined(separator: "\n") }
+                    } footer: {
+                        Text("Review commands before sending. Newlines may execute them on your Mac.")
+                    }
+                }
+                .nativeWorkspaceStyle()
+            }
+            .navigationTitle("Send text")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send", action: send).disabled(text.isEmpty || text.utf8.count > 65536)
+                }
+            }
+            .defaultFocus($focused, true)
+            .task { focused = true }
+        }
+    }
 }
 
 #if DEBUG && targetEnvironment(simulator)

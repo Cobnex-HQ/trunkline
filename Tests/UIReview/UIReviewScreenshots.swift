@@ -98,6 +98,113 @@ final class UIReviewScreenshots: XCTestCase {
         XCTAssertTrue(target.exists && target.isHittable, "Could not reveal menu item: \(title)")
     }
 
+    func testConnectedTerminalRotation() {
+        launch("terminal")
+        let session = app.staticTexts["Project · build"].firstMatch
+        XCTAssertTrue(session.waitForExistence(timeout: 8))
+        session.tap()
+        XCTAssertTrue(app.buttons["Session controls"].waitForExistence(timeout: 8))
+        let resting = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        resting.name = "connected-terminal-no-keyboard"
+        resting.lifetime = .keepAlways
+        add(resting)
+        // The terminal shortcut row must not sit underneath the floating tab bar.
+        let tabs = app.tabBars.firstMatch
+        let history = app.buttons["Scroll history up"].firstMatch
+        if tabs.exists {
+            XCTAssertFalse(history.frame.intersects(tabs.frame), "Terminal shortcuts overlap workspace navigation")
+        }
+        XCTAssertFalse(tabs.exists, "An open terminal should use the full workspace without a second navigation bar")
+        tap("Show keyboard")
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = direction
+            XCTAssertTrue(app.buttons["terminal.key.Hide keyboard"].waitForExistence(timeout: 8))
+            let terminal = app.textViews["Mac terminal session"]
+            let escape = app.buttons["terminal.key.Escape"]
+            XCTAssertTrue(terminal.exists)
+            XCTAssertGreaterThanOrEqual(terminal.frame.width, app.frame.width * 0.85,
+                                        "Sidebar crowds the terminal beside a full-width keyboard")
+            XCTAssertLessThanOrEqual(terminal.frame.maxY, escape.frame.minY + 1,
+                                     "Keyboard accessory covers the terminal")
+            XCTAssertTrue(app.buttons["Session controls"].isHittable)
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "connected-terminal-\(direction.rawValue)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "connected-terminal-hierarchy-\(direction.rawValue)"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
+        app.buttons["terminal.key.Hide keyboard"].tap()
+        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Project · build"].firstMatch.waitForExistence(timeout: 8))
+        // Popping the detail must restore workspace navigation, not leave its
+        // hidden-tab preference attached to the session list.
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            XCTAssertTrue(app.tabBars.buttons["Controls"].waitForExistence(timeout: 5))
+            app.tabBars.buttons["Controls"].tap()
+            XCTAssertTrue(app.buttons["Spotlight"].firstMatch.waitForExistence(timeout: 5))
+        }
+    }
+
+    func testPasscodeKeyboardRotation() {
+        launch("connection-saved")
+        let secureField = app.secureTextFields["connection-passcode"]
+        XCTAssertTrue(secureField.waitForExistence(timeout: 8))
+        secureField.tap()
+        secureField.typeText("layout-test")
+        // Secure fields and their keyboard are redacted in screenshots. Reveal only
+        // this synthetic draft to review the actual keyboard geometry.
+        app.buttons["connection-passcode-visibility"].tap()
+        let field = app.textFields["connection-passcode"]
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = direction
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 8))
+            let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let keyboard = self.app.keyboards.firstMatch.frame
+                return keyboard.intersection(self.app.frame).height > 100 &&
+                    field.isHittable && field.frame.minY >= 0 && field.frame.maxY <= keyboard.minY
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
+                           "Passcode input is obscured after rotating with the keyboard open")
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "passcode-keyboard-\(direction.rawValue)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+        XCTAssertEqual(field.value as? String, "layout-test")
+        XCTAssertTrue(field.isHittable)
+        app.buttons["connection-passcode-visibility"].tap()
+        XCTAssertTrue(secureField.exists)
+        app.buttons["Done"].tap()
+    }
+
+    func testControlsRotation() {
+        launch("controls")
+        let names = ["Spotlight", "Mission Control", "Show desktop", "Switch app", "App windows", "Screenshot"]
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = direction
+            let first = app.buttons["Spotlight"].firstMatch
+            XCTAssertTrue(first.waitForExistence(timeout: 8))
+            let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: first)
+            XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed,
+                           "Sidebar must not cover the controls after rotation")
+            let frames = names.map { app.buttons[$0].firstMatch.frame }
+            for frame in frames {
+                XCTAssertGreaterThanOrEqual(frame.height, 44)
+                XCTAssertEqual(frame.width, frames[0].width, accuracy: 1)
+                XCTAssertEqual(frame.height, frames[0].height, accuracy: 1)
+                XCTAssertGreaterThanOrEqual(frame.minX, 0)
+                XCTAssertLessThanOrEqual(frame.maxX, app.frame.maxX)
+            }
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "controls-rotation-\(direction.rawValue)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+    }
+
     func testWorkspaceSmoke() {
         for section in ["connection", "connection-saved", "desktop", "desktop-session", "controls", "terminal", "terminal-detail", "files"] {
             launch(section)
@@ -189,6 +296,15 @@ final class UIReviewScreenshots: XCTestCase {
         revealMenuItem("Send text…")
         capture("desktop-shortcuts", ready: menuItem("Send text…"))
         tapMenuItem("Send text…")
+        let editor = app.textViews["Text to send"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 8))
+        let editorVisible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            editor.isHittable && editor.frame.minY >= self.app.navigationBars["Send text"].frame.maxY &&
+                editor.frame.maxY <= self.app.keyboards.firstMatch.frame.minY + 1
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [editorVisible], timeout: 5), .completed,
+                       "Text editor must fit between navigation and keyboard")
         capture("desktop-send-text", ready: app.navigationBars["Send text"])
         tap("Cancel")
         if app.buttons["More desktop controls"].exists { tap("More desktop controls") }

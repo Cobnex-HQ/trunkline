@@ -24,6 +24,7 @@ final class ConnectionPasscodeTextField: UITextField {
         rightView = reveal; rightViewMode = .always
         updateRevealButton()
         let toolbar = UIToolbar()
+        toolbar.autoresizingMask = [.flexibleWidth]
         toolbar.items = [UIBarButtonItem(systemItem: .flexibleSpace),
                          UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(dismissKeyboard))]
         toolbar.sizeToFit(); inputAccessoryView = toolbar

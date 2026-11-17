@@ -48,6 +48,7 @@ struct SessionsView: View {
 struct SessionDetail: View {
     @ObservedObject var model: ConnectionModel
     let session: TerminalSessionInfo
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var keyboard = false
     @State private var confirmClose = false
     @State private var paste = ""
@@ -70,6 +71,7 @@ struct SessionDetail: View {
                 }.font(.subheadline).padding(12).background(.bar)
             }
             TerminalSurface(model: model, sessionID: session.id, showKeyboard: $keyboard, fontSize: terminalFontSize, input: input, acceptsInput: session.isRunning && !model.isEndingTerminal(session.id))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(.black)
             if !keyboard { ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -85,6 +87,7 @@ struct SessionDetail: View {
                 }.padding(.horizontal).padding(.vertical, 4)
             }.background(.bar) }
         }
+        .toolbar(.hidden, for: .tabBar)
         .navigationTitle(session.title).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.black, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -120,7 +123,7 @@ struct SessionDetail: View {
             NavigationStack {
                 Form {
                     Section {
-                        TextEditor(text: $paste).font(.system(.body, design: .monospaced)).frame(minHeight: 220)
+                        TextEditor(text: $paste).font(.system(.body, design: .monospaced)).frame(minHeight: verticalSizeClass == .compact ? 96 : 180)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to paste")
                         PasteButton(payloadType: String.self) { paste = $0.joined(separator: "\n") }
                     } footer: {

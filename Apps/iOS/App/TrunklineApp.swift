@@ -96,8 +96,8 @@ struct ConnectView: View {
                         Image("ElephantLogo").resizable().scaledToFit().frame(width: 40, height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(pairing == nil ? "Pair your Mac" : model.name).font(.headline)
-                            Text(pairing?.host ?? "Scan its QR code to connect.").font(.subheadline).foregroundStyle(.secondary)
+                            Text(pairing == nil ? "Pair your Mac" : model.name).font(.callout.weight(.semibold))
+                            Text(pairing?.host ?? "Scan its QR code to connect.").font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }.padding(.vertical, 4)
@@ -221,6 +221,7 @@ struct ConnectView: View {
 }
 
 struct ClipboardView: View {
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ObservedObject var files: ClientFiles
     @State private var outgoing = ""
     @Environment(\.dismiss) private var dismiss
@@ -228,7 +229,7 @@ struct ClipboardView: View {
         NavigationStack {
             Form {
                 Section("Send to Mac") {
-                    TextEditor(text: $outgoing).frame(minHeight: 160).accessibilityLabel("Clipboard text")
+                    TextEditor(text: $outgoing).frame(minHeight: verticalSizeClass == .compact ? 96 : 160).accessibilityLabel("Clipboard text")
                     PasteButton(payloadType: String.self) { outgoing = $0.joined(separator: "\n") }
                     Button("Copy to Mac", systemImage: "arrow.up.doc") {
                         files.clipboardError = nil

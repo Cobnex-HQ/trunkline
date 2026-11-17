@@ -7,11 +7,8 @@ struct ConnectedTabs: View {
     @ObservedObject var model: ConnectionModel
     @State private var selection: WorkspaceSection
     @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.colorScheme) private var colorScheme
-    @ScaledMetric(relativeTo: .subheadline) private var sidebarWidth: CGFloat = 220
-    // iPad can overlay the terminal's input accessory while a hardware keyboard
-    // is connected. Keep status in the scrollable sidebar, clear of that row.
-    private var statusInSidebar: Bool { textSize.isAccessibilitySize || selection == .terminal }
+    @State private var columns: NavigationSplitViewVisibility = .automatic
+    @State private var workspaceWidth: CGFloat = 0
     init(model: ConnectionModel, initialSelection: WorkspaceSection = .desktop) {
         self.model = model
         _selection = State(initialValue: initialSelection)
@@ -20,29 +17,23 @@ struct ConnectedTabs: View {
     @ViewBuilder
     var body: some View {
         if UIDevice.current.userInterfaceIdiom == .pad {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columns) {
                 List(selection: Binding<WorkspaceSection?>(get: { selection }, set: { if let value = $0 { selection = value } })) {
                     Section("Workspace") {
                         ForEach([WorkspaceSection.desktop, .controls, .terminal, .files]) { section in
                             NavigationLink(value: section) {
                                 Label(section.title, systemImage: section.systemImage)
-                                    .foregroundStyle(selection == section
-                                                     ? (colorScheme == .dark ? Color("ControlSurface") : .white)
-                                                     : .primary)
                             }
                         }
                     }
-                    if statusInSidebar {
-                        Section("Connected Mac") { connectionStatus }
+                    Section("Connected Mac") {
+                        connectionStatus
+                        MacSwitchMenu(model: model)
                     }
                 }
                 .listStyle(.sidebar).font(.subheadline)
                 .navigationTitle("Trunkline").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .topBarTrailing) { MacSwitchMenu(model: model) } }
-                .navigationSplitViewColumnWidth(min: 180, ideal: min(sidebarWidth, 400), max: max(280, min(sidebarWidth, 440)))
-                .safeAreaInset(edge: .bottom) {
-                    if !statusInSidebar { connectionStatus.padding() }
-                }
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
             } detail: {
                 switch selection {
                 case .desktop: DesktopView(model: model)
@@ -50,8 +41,22 @@ struct ConnectedTabs: View {
                 case .terminal: SessionsView(model: model)
                 case .files: FilesView(files: model.files, embedded: true)
                 }
-            }.navigationSplitViewStyle(.balanced)
+            }
+            .navigationSplitViewStyle(.balanced)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                workspaceWidth = width
+                fitColumns()
+            }
+            .onChange(of: selection) { _, _ in fitColumns() }
+            .onChange(of: model.selectedTerminalID) { _, _ in fitColumns() }
         } else { workspaceTabs }
+    }
+
+    // Keep one navigation hierarchy during rotation. Only column visibility changes,
+    // so terminal selection, keyboard focus and drafts remain attached to their views.
+    private func fitColumns() {
+        let editingTerminal = selection == .terminal && model.selectedTerminalID != nil
+        columns = workspaceWidth >= 900 && !editingTerminal ? .all : .detailOnly
     }
 
     private var connectionStatus: some View {

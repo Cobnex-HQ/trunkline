@@ -13,7 +13,7 @@ struct ControlsView: View {
     @State private var clipboard = false
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
-    @ScaledMetric(relativeTo: .caption) private var quickActionHeight: CGFloat = 52
+    @ScaledMetric(relativeTo: .caption) private var quickActionHeight: CGFloat = 64
     @ObservedObject var files: ClientFiles
     var dismissible = false
     @Environment(\.dismiss) private var dismiss
@@ -241,7 +241,7 @@ struct ControlsView: View {
                         Image(systemName: action.symbol).font(.body)
                         Text(action.title).font(.caption).multilineTextAlignment(.center).lineLimit(2, reservesSpace: true)
                     }.frame(maxWidth: .infinity).frame(minHeight: quickActionHeight)
-                }.buttonStyle(.bordered).tint(Color("AccentColor")).disabled(!enabled)
+                }.buttonStyle(.bordered).buttonBorderShape(.roundedRectangle).tint(Color("AccentColor")).disabled(!enabled)
             }
         }.frame(minWidth: minimum * CGFloat(columns) + 8 * CGFloat(columns - 1))
     }

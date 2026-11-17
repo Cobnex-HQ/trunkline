@@ -517,6 +517,27 @@ final class CompanionClientTests: XCTestCase {
         }
     }
 
+    func testTerminalAccessoryShowsWholeAlignedKeysAtRest() throws {
+        let terminal = SessionTerminalView(frame: .zero, font: nil)
+        let accessory = try XCTUnwrap(terminal.inputAccessoryView)
+        let scroll = try XCTUnwrap(accessory.subviews.compactMap { $0 as? UIScrollView }.first)
+        for width: CGFloat in [320, 402, 430, 744, 874, 1133] {
+            accessory.frame = CGRect(x: 0, y: 0, width: width, height: 52)
+            accessory.setNeedsLayout()
+            accessory.layoutIfNeeded()
+            let keys = scroll.subviews.compactMap { $0 as? UIButton }
+            let first = try XCTUnwrap(keys.first)
+            for key in keys {
+                XCTAssertEqual(key.frame.width, first.frame.width, accuracy: 0.5)
+                let visible = key.frame.intersection(scroll.bounds)
+                if !visible.isNull && visible.width > 0.5 {
+                    XCTAssertEqual(visible.width, key.frame.width, accuracy: 0.5,
+                                   "A key is cut off beside More at width \(width)")
+                }
+            }
+        }
+    }
+
     func testTerminalAccessoryPreservesControlThroughResizeAndUsesApplicationCursorMode() throws {
         let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 320, height: 480), font: nil)
         let output = TerminalInputRecorder()
