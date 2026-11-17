@@ -1,0 +1,9 @@
+#ifdef __OBJC__
+#import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
+#import <CoreData/CoreData.h>
+#import <Security/Security.h>
+@class UIAlertController;
+#import "Logger.h"
+#import "Utils.h"
+#endif

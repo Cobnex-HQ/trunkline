@@ -24,6 +24,8 @@ Trunkline’s adapted client files retain upstream copyrights and dated modifica
 
 Both Moonlight licence files retain the exact App Store exception. It does not extend automatically to Sunshine, other dependencies or all Trunkline contributions. Trunkline’s root licence is unchanged. Upstream names remain in legal credits without implying endorsement or trademark permission.
 
+`Engines/MacClient/` adapts the pinned Moonlight iOS HTTP, pairing, identity and utility code for macOS. Original notices remain in the adapted files. The Mac viewer links the same Moonlight C core and input-ordering adaptation, uses native AVFoundation playback, and statically links the pinned desktop Opus 1.6.1 build. Its OpenSSL framework comes from the existing pinned XCFramework. Client identity files stay in a private Application Support directory. TLS identity imports are memory-only, with no repeated Keychain imports.
+
 ## SwiftTerm
 
 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), MIT. Tag `v1.11.2`, commit `b1262db5b6bea699a8260a8c66999436c508ca56`. Original notices, including xterm.js/SourceLair/Christopher Jeffrey credits, remain in `Vendor/SwiftTerm/LICENSE` and `Apps/iOS/Resources/SwiftTerm-LICENSE.txt`.

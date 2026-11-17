@@ -1,16 +1,19 @@
 <div align="center">
   <img src="Assets/Branding/glacier-fold-master.png" width="128" alt="Trunkline folded elephant icon">
   <h1>Trunkline</h1>
-  <p>A native Mac workspace on your iPhone and iPad.</p>
+  <p>Your Mac workspace, from iPhone, iPad or another Mac.</p>
 </div>
 
 Use your Mac’s desktop, terminal, files and controls from a native iPhone or iPad app. The Mac host includes the streaming engine and connection helpers.
+
+The Mac app also includes a native desktop client. Open **Other Macs**, paste the other Mac’s pairing link and enter its connection passcode. Connect locally or choose **Away** after enabling away access on the host. Outgoing away connections require this Mac’s own remote access to be stopped first.
 
 **Status: early development.** Build from source for local use and contribution. Public installers are not available yet. Hardware, multi-monitor and network testing remain incomplete. Keep another way to reach an unattended Mac.
 
 ## Features
 
 - Native iPhone, iPad and Mac interfaces with light, dark and system appearance.
+- Mac-to-Mac desktop viewing, mouse and keyboard input, audio, full screen, saved Macs and display selection. Terminal and file workspaces remain in the iPhone/iPad client.
 - Desktop streaming, direct touch, trackpad input, zoom and monitor selection.
 - Named terminal sessions, file transfers, app/window controls and keep-awake settings.
 - QR pairing, saved Macs and one active controlling device per host.

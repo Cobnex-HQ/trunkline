@@ -76,3 +76,11 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Passed: 29 tooling tests, including six notice regressions, 100 Swift tests, 11 Rust tests and pinned dependency verification.
 - Notice review remains for 42 of 367 external Cargo packages. Counts include build and other-target dependencies, not just code linked into each app.
 - Codec sources/build flags, full native/Rust/web notices, OpenSSL wrapper provenance and App Store licensing remain open. See [third-party findings](THIRD_PARTY.md).
+
+## Mac-to-Mac client — 2026-11-17
+
+- Added an AppKit desktop window with native video/audio playback, physical keyboard and mouse input, saved Macs, display selection and remote controls.
+- Passed five native Mac tests, including real H.264 decoding and pairing with an isolated bundled host. The live fixture received desktop frames and verified injected mouse and key events at the macOS event boundary.
+- Passed local TCP authentication, admission rejection, cancellation and away-tunnel lifetime checks. The shared suite passed 104 Swift, 35 tooling and 11 Rust tests. The iOS companion simulator suite also passed.
+- Local checks used two processes on one Apple-silicon Mac. Two physical Macs, separate-network access, audible playback, Intel execution, non-US keyboards and sustained performance still need acceptance testing.
+- The Mac client currently provides desktop viewing and controls. Terminal and files remain mobile-client features. Away connections require stopping this Mac’s own host access because both use the same local tunnel ports.

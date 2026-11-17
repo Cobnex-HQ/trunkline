@@ -6,8 +6,12 @@ import AppKit
 @MainActor
 final class HostAppDelegate: NSObject, NSApplicationDelegate {
     let model = HostModel()
+    let client = MacClientModel()
     private var launchTask: Task<Void, Never>?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+        #endif
         guard launchTask == nil else { return }
         launchTask = Task { await model.startOnLaunchIfReady() }
     }
@@ -27,6 +31,7 @@ final class HostAppDelegate: NSObject, NSApplicationDelegate {
         model.stop()
         quitting = true
         Task { @MainActor in
+            await client.shutdown()
             guard await model.terminals.shutdown() else {
                 model.error = "Some terminal processes have not stopped. Trunkline will stay open so you can retry."
                 quitting = false

@@ -16,6 +16,27 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 targets:
+  MacClientTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+    - Tests/MacClient/MacDesktopTests.swift
+    - Tests/MacClient/MacVideoTests.m
+    - Tests/MacClient/MacStreamIntegrationTests.swift
+    dependencies:
+    - target: TrunklineHost
+    - package: TrunklineCore
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.mac-client-tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Trunkline.app/Contents/MacOS/Trunkline
+        BUNDLE_LOADER: $(TEST_HOST)
+        CLANG_ENABLE_OBJC_ARC: true
+        HEADER_SEARCH_PATHS:
+        - $(SRCROOT)/Engines/MacClient
+        - $(SRCROOT)/Vendor/MoonlightCore/src
   CompanionClientTests:
     type: bundle.unit-test
     platform: iOS
@@ -189,11 +210,29 @@ targets:
         - UIInterfaceOrientationLandscapeLeft
         - UIInterfaceOrientationLandscapeRight
   TrunklineHost:
+    info:
+      path: .build/generated/MacHost-Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     type: application
     productName: Trunkline
     platform: macOS
     sources:
     - Apps/macOS
+    - Engines/MacClient
+    - Apps/iOS/Features/Controls/ClientControls.swift
+    - Vendor/MoonlightSource/Limelight/Crypto/mkcert.c
+    - Vendor/MoonlightSource/Limelight/Stream/StreamConfiguration.m
+    - Vendor/MoonlightSource/Limelight/Network/HttpRequest.m
+    - Vendor/MoonlightSource/Limelight/Network/HttpResponse.m
+    - Vendor/MoonlightSource/Limelight/Network/ServerInfoResponse.m
+    - Vendor/MoonlightSource/Limelight/Database/TemporaryApp.m
+    - Vendor/MoonlightSource/Limelight/Limelight.xcdatamodeld
+    preBuildScripts:
+    - name: Build Mac client audio
+      script: /bin/sh "$SRCROOT/Scripts/build-mac-client.sh"
+      basedOnDependencyAnalysis: false
     settings:
       base:
         CODE_SIGN_IDENTITY: Apple Development
@@ -202,11 +241,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.host
         INFOPLIST_KEY_CFBundleDisplayName: Trunkline
         INFOPLIST_KEY_NSScreenCaptureUsageDescription: Stream your desktop to your
-          paired iPhone.
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Accept encrypted connections
-          from your iPhone.
+          paired iPhone, iPad or Mac.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to another Mac or accept
+          encrypted connections from your paired iPhone, iPad or Mac.
         SWIFT_OBJC_BRIDGING_HEADER: Apps/macOS/App/TrunklineHost-Bridging-Header.h
-        HEADER_SEARCH_PATHS: $(SRCROOT)/Apps/macOS/Features/Terminal
+        CLANG_ENABLE_OBJC_ARC: true
+        CLANG_ENABLE_MODULES: true
+        GCC_PREFIX_HEADER: Engines/MacClient/MacClientPrefix.pch
+        HEADER_SEARCH_PATHS:
+        - $(SRCROOT)/Apps/macOS/Features/Terminal
+        - $(SRCROOT)/Engines/MacClient
+        - $(SRCROOT)/Vendor/MoonlightSource/Limelight/**
+        - $(SRCROOT)/Vendor/MoonlightCore/src
+        - $(SDKROOT)/usr/include/libxml2
+        - $(SRCROOT)/Vendor/MoonlightSource/libs/opus/include/opus
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/.build/desktop-dependencies/install/$(CURRENT_ARCH)/lib
+        OTHER_LDFLAGS: $(inherited) -lopus -lxml2 -framework VideoToolbox -framework AVFoundation -framework CoreData
         ENABLE_APP_SANDBOX: false
         ENABLE_HARDENED_RUNTIME: true
         CODE_SIGN_ENTITLEMENTS: Config/TrunklineHost.entitlements
@@ -226,6 +276,9 @@ targets:
     - target: DesktopSupervisor
       link: false
     - package: TrunklineCore
+    - target: MacStreamCore
+    - framework: Vendor/OpenSSL/OpenSSL.xcframework
+      embed: true
   SwiftTerm:
     type: framework
     platform: iOS
@@ -286,6 +339,44 @@ targets:
         - $(SRCROOT)/Vendor/MoonlightCore/nanors
         - $(SRCROOT)/Vendor/MoonlightCore/nanors/deps/obl
         SKIP_INSTALL: true
+  MacStreamCore:
+    type: library.static
+    platform: macOS
+    sources:
+    - path: Vendor/MoonlightCore/src
+      excludes:
+      - InputStream.c
+    - path: Engines/Client/TrunklineInputStream.c
+    - path: Vendor/MoonlightCore/enet/list.c
+    - path: Vendor/MoonlightCore/enet/compress.c
+    - path: Vendor/MoonlightCore/enet/packet.c
+    - path: Vendor/MoonlightCore/enet/unix.c
+    - path: Vendor/MoonlightCore/enet/peer.c
+    - path: Vendor/MoonlightCore/enet/protocol.c
+    - path: Vendor/MoonlightCore/enet/host.c
+    - path: Vendor/MoonlightCore/enet/callbacks.c
+    - path: Vendor/MoonlightCore/enet/win32.c
+    - path: Vendor/MoonlightCore/nanors/rs.c
+    - path: Vendor/MoonlightCore/nanors/deps/obl/oblas_common.c
+    - path: Vendor/MoonlightCore/nanors/deps/obl/oblas_lite.c
+    dependencies:
+    - framework: Vendor/OpenSSL/OpenSSL.xcframework
+      embed: false
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        GCC_C_LANGUAGE_STANDARD: gnu11
+        GCC_PREPROCESSOR_DEFINITIONS:
+        - $(inherited)
+        - HAS_SOCKLEN_T
+        - NDEBUG
+        HEADER_SEARCH_PATHS:
+        - $(SRCROOT)/Packages/Transport/iOS
+        - $(SRCROOT)/Vendor/MoonlightCore/src
+        - $(SRCROOT)/Vendor/MoonlightCore/enet/include
+        - $(SRCROOT)/Vendor/MoonlightCore/nanors
+        - $(SRCROOT)/Vendor/MoonlightCore/nanors/deps/obl
+        SKIP_INSTALL: true
   DesktopSupervisor:
     type: tool
     platform: macOS
@@ -299,6 +390,15 @@ targets:
         GCC_C_LANGUAGE_STANDARD: gnu11
         SKIP_INSTALL: true
 schemes:
+  MacClientTests:
+    build:
+      targets:
+        MacClientTests: all
+    test:
+      environmentVariables:
+        TRUNKLINE_TEST_LIVE_STREAM: $(TRUNKLINE_TEST_LIVE_STREAM)
+      targets:
+      - MacClientTests
   CompanionClientTests:
     build:
       targets:

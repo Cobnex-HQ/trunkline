@@ -13,7 +13,7 @@ struct TrunklineHostApp: App {
     @AppStorage("trunkline.appearance") private var appearance: AppAppearance = .system
     var body: some Scene {
         WindowGroup("Trunkline", id: "host") {
-            HostView(model: model)
+            HostView(model: model, client: delegate.client)
                 .tint(Color("AccentColor"))
                 .preferredColorScheme(appearance.colorScheme)
                 .frame(minWidth: 700, minHeight: 480)
@@ -52,13 +52,14 @@ private struct HostMenu: View {
 
 struct HostView: View {
     @ObservedObject var model: HostModel
+    @ObservedObject var client: MacClientModel
     @State private var passcode = ""
     @State private var confirmation = ""
     private enum Panel: String, CaseIterable, Identifiable {
-        case connection = "Connection", desktop = "Desktop", power = "Power", settings = "Settings"
+        case otherMacs = "Other Macs", connection = "Connection", desktop = "Desktop", power = "Power", settings = "Settings"
         var id: Self { self }
         var symbol: String {
-            switch self { case .connection: "iphone.radiowaves.left.and.right"; case .desktop: "display"; case .power: "bolt"; case .settings: "gearshape" }
+            switch self { case .otherMacs: "desktopcomputer"; case .connection: "iphone.radiowaves.left.and.right"; case .desktop: "display"; case .power: "bolt"; case .settings: "gearshape" }
         }
     }
     @State private var panel: Panel? = .connection
@@ -97,6 +98,8 @@ struct HostView: View {
                 }
                 Group {
                     switch panel ?? .connection {
+                    case .otherMacs:
+                        MacClientView(model: client, localHost: model)
                     case .connection:
                         ScrollView {
                             VStack(alignment: .leading, spacing: 18) {
@@ -131,7 +134,8 @@ struct HostView: View {
             .navigationTitle((panel ?? .connection).rawValue)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    if model.isRunning || model.isStarting {
+                    if panel == .otherMacs { EmptyView() }
+                    else if model.isRunning || model.isStarting {
                         Button(model.isStarting ? "Cancel" : "Stop access") { model.stop() }
                     } else if model.hasPasscode && !needsCredentials {
                         Button("Start access") { Task { await model.start() } }.buttonStyle(.borderedProminent)

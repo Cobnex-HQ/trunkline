@@ -33,6 +33,7 @@ All paths below are relative to the repository root. Each row identifies entry p
 | Desktop session, zoom and display selection | `Apps/iOS/Features/Desktop/` session and viewport types. Shared viewport/display policies in `Packages/Core` |
 | Touch and streamed video integration | `Apps/iOS/Features/Desktop/Engine/`. Ordered client input in `Engines/Client/TrunklineInputStream.c` |
 | Host streaming lifecycle | `Apps/macOS/Features/Desktop/` and `Services/DesktopSupervisor/main.c` |
+| Mac client | `Apps/macOS/Features/Client/` owns connection state, saved Macs, native AppKit windows and input. `Engines/MacClient/` adapts pairing, H.264 rendering and Opus playback around the shared streaming core |
 | Terminal, files and Mac controls | Matching `Features/Terminal`, `Features/Files` and `Features/Controls` directories in each app |
 | Keep-awake behaviour | `Apps/macOS/Features/Power/` and shared power policies in `Packages/Core` |
 | Away transport | `Packages/Transport/src/`, its `iOS/P2PProbe.h` bridge, and `Apps/macOS/Features/Connection/AwayAccessHost.swift` |

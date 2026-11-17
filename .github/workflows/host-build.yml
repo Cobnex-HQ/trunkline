@@ -15,3 +15,8 @@ jobs:
           persist-credentials: false
       - name: Build and verify bundled Mac app
         run: ./Scripts/setup-mac.sh build
+      - name: Native Mac client tests
+        run: >-
+          xcodebuild -quiet -project Trunkline.xcodeproj -scheme MacClientTests
+          -destination 'platform=macOS' -derivedDataPath .build/dev-mac
+          CODE_SIGNING_ALLOWED=NO test

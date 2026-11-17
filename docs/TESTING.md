@@ -55,3 +55,16 @@ For connection input, test with several saved Macs and the software keyboard in 
 For desktop navigation, verify three-finger left/right changes Spaces, up opens Mission Control and down opens App windows. Verify the equivalent toolbar/menu actions and that two-finger pinch/pan still work. Test with VoiceOver using the menu alternatives. Physical display switching and Mac Spaces are separate features. Test both with different monitor aspect ratios.
 
 Check local Wi-Fi, a different Wi-Fi network and cellular independently. Simulator tests and two processes on one machine are not evidence of an external connection. Check reboot/login behaviour and initial FileVault unlock separately. Record results without device IDs or connection secrets.
+
+## Mac client
+
+Run `sh Scripts/verify-mac-client.sh` for the real local TCP fixture. It checks authentication, admission rejection, cancellation and preservation of a prepared away tunnel. The `MacClientTests` Xcode scheme checks AppKit pointer mapping, input release and real H.264 decoding.
+
+```sh
+xcodebuild -project Trunkline.xcodeproj -scheme MacClientTests \
+  -destination 'platform=macOS' -derivedDataPath .build/mac-client test
+```
+
+The opt-in streaming test starts an isolated bundled host on ports 59984–60010 with temporary random credentials. It does not use saved host credentials. It requires macOS capture and input permission and checks injected clicks and keys with an event tap that consumes only fixture events. Mouse and keyboard ordering is checked within each input channel. Add `TRUNKLINE_TEST_LIVE_STREAM=1` to the command to run it. Normal CI skips this hardware check.
+
+Before release, test two physical Macs on local and separate networks, including audio, full-screen transitions, mixed-resolution monitors, reconnect and a host already controlled by another device. Test non-US keyboards and input methods separately. The current Mac viewer sends physical key events and does not implement a local IME composition surface.
