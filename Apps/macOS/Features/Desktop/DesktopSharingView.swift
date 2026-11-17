@@ -18,7 +18,7 @@ struct DesktopSharingView: View {
 
     var body: some View {
         Group {
-            Section {
+            Section("Desktop sharing") {
                 HStack {
                     if engine.starting { ProgressView().controlSize(.small) }
                     Label(engine.status, systemImage: engine.running ? "checkmark.circle" : "display")
@@ -49,7 +49,7 @@ struct DesktopSharingView: View {
                 }
             }
             if let selection = engine.displaySelection {
-                Section {
+                Section("Display") {
                     DesktopDisplayPicker(selection: selection, busy: selectingDisplay) { id in
                         selectingDisplay = true; displayError = nil
                         Task {
@@ -70,8 +70,8 @@ struct DesktopSharingView: View {
                     }
                 }
             }
-            Section {
-                DisclosureGroup("Permissions", isExpanded: $permissions) {
+            Section("Permissions") {
+                DisclosureGroup("Manage permissions", isExpanded: $permissions) {
                     Text("Enable Trunkline and Trunkline Desktop in Privacy & Security. Restart desktop access after changing permissions.")
                         .foregroundStyle(.secondary)
                     ViewThatFits(in: .horizontal) {
@@ -83,8 +83,8 @@ struct DesktopSharingView: View {
                         .disabled(!enabled || engine.starting)
                 }
             }
-            Section {
-                DisclosureGroup("Advanced") {
+            Section("Advanced") {
+                DisclosureGroup("Desktop service") {
                     Button("Open desktop logs") { engine.showLogs() }.disabled(engine.directory == nil)
                     if engine.running { Button("Stop desktop access…", role: .destructive) { stop = true } }
                     if !engine.clients.isEmpty { Button("Revoke desktop pairings…", role: .destructive) { revoke = true } }

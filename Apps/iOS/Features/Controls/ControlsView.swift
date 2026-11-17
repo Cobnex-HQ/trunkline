@@ -13,7 +13,7 @@ struct ControlsView: View {
     @State private var clipboard = false
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
-    @ScaledMetric(relativeTo: .caption) private var quickActionHeight: CGFloat = 72
+    @ScaledMetric(relativeTo: .caption) private var quickActionHeight: CGFloat = 52
     @ObservedObject var files: ClientFiles
     var dismissible = false
     @Environment(\.dismiss) private var dismiss
@@ -46,32 +46,6 @@ struct ControlsView: View {
                                     quickActions(columns: 1, enabled: state.accessibility)
                                 }.padding(.vertical, 8)
                             }
-                        }
-                        Section("Sound") {
-                            if let outputs = state.audioOutputs {
-                                if outputs.isEmpty {
-                                    Text("No audio outputs connected").foregroundStyle(.secondary)
-                                } else {
-                                    soundOutputPicker(outputs)
-                                }
-                            }
-                            if state.volume != nil {
-                                HStack {
-                                    if let muted = state.muted {
-                                        Button { controls.perform(.mute(!muted)) } label: {
-                                            Image(systemName: muted ? "speaker.slash.fill" : "speaker.fill").frame(width: 44, height: 44)
-                                        }.accessibilityLabel(muted ? "Unmute" : "Mute").accessibilityValue(muted ? "Muted" : "Sound on")
-                                    } else { Image(systemName: "speaker.fill") }
-                                    Slider(value: $volume, in: 0...1) { editing in
-                                        editingVolume = editing
-                                        if !editing { controls.perform(.volume(volume)) }
-                                    }.accessibilityLabel("Mac volume")
-                                    Image(systemName: "speaker.wave.3.fill")
-                                }.frame(minHeight: 44)
-                            } else { Text("Volume is controlled by the output device.").foregroundStyle(.secondary) }
-                            HStack {
-                                media(.previousTrack); Spacer(); media(.playPause); Spacer(); media(.nextTrack)
-                            }.padding(.horizontal)
                         }
                     }
                     Section("Apps") {
@@ -150,6 +124,32 @@ struct ControlsView: View {
                             } else {
                                 Button("Load windows", systemImage: "arrow.clockwise") { controls.refresh() }
                             }
+                        }
+                        Section("Sound") {
+                            if let outputs = state.audioOutputs {
+                                if outputs.isEmpty {
+                                    Text("No audio outputs connected").foregroundStyle(.secondary)
+                                } else {
+                                    soundOutputPicker(outputs)
+                                }
+                            }
+                            if state.volume != nil {
+                                HStack {
+                                    if let muted = state.muted {
+                                        Button { controls.perform(.mute(!muted)) } label: {
+                                            Image(systemName: muted ? "speaker.slash.fill" : "speaker.fill").frame(width: 44, height: 44)
+                                        }.accessibilityLabel(muted ? "Unmute" : "Mute").accessibilityValue(muted ? "Muted" : "Sound on")
+                                    } else { Image(systemName: "speaker.fill") }
+                                    Slider(value: $volume, in: 0...1) { editing in
+                                        editingVolume = editing
+                                        if !editing { controls.perform(.volume(volume)) }
+                                    }.accessibilityLabel("Mac volume")
+                                    Image(systemName: "speaker.wave.3.fill")
+                                }.frame(minHeight: 44)
+                            } else { Text("Volume is controlled by the output device.").foregroundStyle(.secondary) }
+                            HStack {
+                                media(.previousTrack); Spacer(); media(.playPause); Spacer(); media(.nextTrack)
+                            }.padding(.horizontal)
                         }
                         Section("Displays") {
                             ForEach(state.displays) { display in
@@ -240,8 +240,8 @@ struct ControlsView: View {
                     VStack(spacing: 6) {
                         Image(systemName: action.symbol).font(.body)
                         Text(action.title).font(.caption).multilineTextAlignment(.center).lineLimit(2, reservesSpace: true)
-                    }.frame(maxWidth: .infinity).frame(height: quickActionHeight)
-                }.buttonStyle(GlacierControlButtonStyle()).disabled(!enabled)
+                    }.frame(maxWidth: .infinity).frame(minHeight: quickActionHeight)
+                }.buttonStyle(.bordered).tint(Color("AccentColor")).disabled(!enabled)
             }
         }.frame(minWidth: minimum * CGFloat(columns) + 8 * CGFloat(columns - 1))
     }
@@ -286,16 +286,6 @@ struct ControlsView: View {
         Button { controls.perform(.system(action)) } label: {
             Label(action.title, systemImage: action.symbol).labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
         }.disabled(controls.snapshot?.accessibility != true)
-    }
-}
-
-private struct GlacierControlButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color(red: 0.988, green: 0.980, blue: 0.953))
-            .background(Color("ControlSurface"), in: RoundedRectangle(cornerRadius: 12))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
     }
 }
 
@@ -360,7 +350,7 @@ private struct ApplicationControlLabel: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(name).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                Text(name).font(.subheadline.weight(.medium)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
                 if textSize.isAccessibilitySize, let status {
                     Text(status).font(.caption).foregroundStyle(.secondary)
                 }

@@ -8,6 +8,8 @@ struct NativeWorkspaceStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.subheadline)
+            .listStyle(.insetGrouped)
+            .formStyle(.grouped)
             .environment(\.defaultMinListRowHeight, 44)
             .listSectionSpacing(16)
             .navigationBarTitleDisplayMode(.inline)

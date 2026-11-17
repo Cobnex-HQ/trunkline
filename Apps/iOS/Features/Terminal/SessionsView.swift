@@ -82,7 +82,7 @@ struct SessionDetail: View {
                     if session.isRunning && !model.isEndingTerminal(session.id) {
                     ForEach(TerminalShortcut.allCases, id: \.self) { terminalKey($0) }
                     }
-                }.padding(.horizontal, 12).padding(.vertical, 8)
+                }.padding(.horizontal).padding(.vertical, 4)
             }.background(.bar) }
         }
         .navigationTitle(session.title).navigationBarTitleDisplayMode(.inline)
@@ -119,11 +119,14 @@ struct SessionDetail: View {
         .sheet(isPresented: $showPaste) {
             NavigationStack {
                 Form {
-                    TextEditor(text: $paste).font(.system(.body, design: .monospaced)).frame(minHeight: 200)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    PasteButton(payloadType: String.self) { paste = $0.joined(separator: "\n") }
-                    Text("Text is sent as bracketed paste. How it is handled depends on the application running in this session.").font(.caption).foregroundStyle(.secondary)
-                }.navigationTitle("Paste into session")
+                    Section {
+                        TextEditor(text: $paste).font(.system(.body, design: .monospaced)).frame(minHeight: 220)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to paste")
+                        PasteButton(payloadType: String.self) { paste = $0.joined(separator: "\n") }
+                    } footer: {
+                        Text("Text is sent as bracketed paste. How it is handled depends on the application running in this session.")
+                    }
+                }.nativeWorkspaceStyle().navigationTitle("Paste into session")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showPaste = false; paste = "" } }
                         ToolbarItem(placement: .confirmationAction) {

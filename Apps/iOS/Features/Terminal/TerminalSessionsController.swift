@@ -41,7 +41,7 @@ final class TerminalSessionsController: UITableViewController {
         super.viewDidLoad()
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "session")
         tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 70
+        tableView.estimatedRowHeight = 76
         tableView.alwaysBounceVertical = true
         tableView.tintColor = UIColor(named: "AccentColor")
         refreshControl = UIRefreshControl()
@@ -54,10 +54,14 @@ final class TerminalSessionsController: UITableViewController {
             var content = cell.defaultContentConfiguration()
             content.text = session.title
             content.secondaryText = "\(session.kind.title) · \(status)"
+            content.textProperties.font = .preferredFont(forTextStyle: .headline)
+            content.secondaryTextProperties.font = .preferredFont(forTextStyle: .subheadline)
             content.textProperties.numberOfLines = 0
             content.secondaryTextProperties.numberOfLines = 0
             content.secondaryTextProperties.color = .secondaryLabel
-            content.image = UIImage(systemName: session.isRunning ? "terminal" : "clock")
+            content.image = UIImage(systemName: session.isRunning ? "terminal" : "clock",
+                                    withConfiguration: UIImage.SymbolConfiguration(textStyle: .body))
+            content.imageProperties.tintColor = session.isRunning ? table.tintColor : .secondaryLabel
             cell.contentConfiguration = content
             cell.accessoryType = .disclosureIndicator
             cell.accessoryView = nil
@@ -90,12 +94,14 @@ final class TerminalSessionsController: UITableViewController {
             title.font = .preferredFont(forTextStyle: .headline)
             title.adjustsFontForContentSizeCategory = true
             title.numberOfLines = 0
+            title.textAlignment = .center
             let detail = UILabel()
             detail.text = loaded ? "Use + to start a session on your Mac." : "Pull down or tap Refresh to try again."
             detail.font = .preferredFont(forTextStyle: .subheadline)
             detail.adjustsFontForContentSizeCategory = true
             detail.textColor = .secondaryLabel
             detail.numberOfLines = 0
+            detail.textAlignment = .center
             var config = UIButton.Configuration.tinted()
             config.title = "Refresh"
             let refresh = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in self?.onRefresh?() })

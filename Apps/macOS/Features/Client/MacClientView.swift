@@ -17,7 +17,10 @@ struct MacClientView: View {
                     HStack {
                         Button(model.streaming ? "Show desktop" : "Open desktop", systemImage: "display") { model.openDesktop() }
                             .buttonStyle(.borderedProminent)
-                        Button("Disconnect") { model.disconnect() }
+                        Button("Disconnect…") {
+                            let prompt = HostSharingPrompt(title: "Disconnect from \(model.connection.name)?", message: "The remote desktop will close. Terminal jobs on that Mac keep running.", button: "Disconnect")
+                            if HostSharingAction.show(prompt) { model.disconnect() }
+                        }
                     }
                     if !model.status.isEmpty { Text(model.status).foregroundStyle(.secondary) }
                 }
@@ -30,36 +33,30 @@ struct MacClientView: View {
                 }
                 MacClientControls(model: model, controls: model.controls)
             } else {
-                Section("Connect to another Mac") {
-                    Text("On the other Mac, open Trunkline, start access and copy its pairing link.")
-                        .foregroundStyle(.secondary)
-                    if !model.savedMacs.isEmpty {
-                        Picker("Saved Mac", selection: Binding(get: { model.savedMacs.first(where: { $0.link == model.pairingText })?.id ?? "" }, set: { id in
-                            if let saved = model.savedMacs.first(where: { $0.id == id }) { model.select(saved) }
-                            else { model.pairingText = ""; model.passcode = "" }
-                        })) {
-                            Text("Add a Mac…").tag("")
-                            ForEach(model.savedMacs) { Text($0.name).tag($0.id) }
-                        }
-                    }
-                    TextField("Pairing link", text: $model.pairingText, prompt: Text("trunkline://pair…"))
-                        .textContentType(.URL)
-                    HStack {
-                        if showPasscode { TextField("Connection passcode", text: $model.passcode) }
-                        else { SecureField("Connection passcode", text: $model.passcode) }
-                        Button(showPasscode ? "Hide passcode" : "Show passcode", systemImage: showPasscode ? "eye.slash" : "eye") { showPasscode.toggle() }
-                            .labelStyle(.iconOnly).buttonStyle(.borderless)
-                    }.onSubmit { if !busy { model.connect(localHost: localHost) } }
-                    Picker("Network", selection: $model.away) {
-                        Text("Local network").tag(false)
-                        Text("Away").tag(true)
-                    }.pickerStyle(.segmented)
-                    if model.away {
-                        Text("Requires Away access on the other Mac. Direct connections depend on both networks. Stop sharing from this Mac before connecting away.")
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                }.disabled(busy)
                 Section {
+                    Group {
+                        if !model.savedMacs.isEmpty {
+                            Picker("Saved Mac", selection: Binding(get: { model.savedMacs.first(where: { $0.link == model.pairingText })?.id ?? "" }, set: { id in
+                                if let saved = model.savedMacs.first(where: { $0.id == id }) { model.select(saved) }
+                                else { model.pairingText = ""; model.passcode = "" }
+                            })) {
+                                Text("Add a Mac…").tag("")
+                                ForEach(model.savedMacs) { Text($0.name).tag($0.id) }
+                            }
+                        }
+                        TextField("Pairing link", text: $model.pairingText, prompt: Text("trunkline://pair…"))
+                            .textContentType(.URL).textFieldStyle(.roundedBorder)
+                        HStack {
+                            if showPasscode { TextField("Connection passcode", text: $model.passcode) }
+                            else { SecureField("Connection passcode", text: $model.passcode) }
+                            Button(showPasscode ? "Hide passcode" : "Show passcode", systemImage: showPasscode ? "eye.slash" : "eye") { showPasscode.toggle() }
+                                .labelStyle(.iconOnly).buttonStyle(.borderless)
+                        }.textFieldStyle(.roundedBorder).onSubmit { if !busy { model.connect(localHost: localHost) } }
+                        Picker("Network", selection: $model.away) {
+                            Text("Local network").tag(false)
+                            Text("Away").tag(true)
+                        }.pickerStyle(.segmented)
+                    }.disabled(busy)
                     if busy {
                         HStack {
                             ProgressView().controlSize(.small)
@@ -72,6 +69,13 @@ struct MacClientView: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(model.pairingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.passcode.isEmpty)
                     }
+                } header: { Text("Connect to a Mac") } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("On the remote Mac, open My Mac → Sharing, turn sharing on and copy its pairing link.")
+                        if model.away {
+                            Text("Requires Away access on the other Mac. Direct connections depend on both networks. Turn off sharing on this Mac before connecting away.")
+                        }
+                    }
                 }
             }
             if let error = model.error ?? model.connection.error {
@@ -79,7 +83,7 @@ struct MacClientView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(maxWidth: 800).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: connected ? 800 : 620).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

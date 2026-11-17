@@ -6,7 +6,7 @@
 
 Use your Mac’s desktop, terminal, files and controls from a native iPhone or iPad app. The Mac host includes the streaming engine and connection helpers.
 
-The Mac app also includes a native desktop client. Open **Other Macs**, paste the other Mac’s pairing link and enter its connection passcode. Connect locally or choose **Away** after enabling away access on the host. Outgoing away connections require this Mac’s own remote access to be stopped first.
+To share this Mac, open **My Mac → Sharing**, turn sharing on and choose **Copy pairing link**. The Mac app also includes a native desktop client. Open **Remote Macs → Saved Macs**, paste the other Mac’s pairing link and enter its connection passcode. Connect locally or choose **Away** after enabling away access on the host. Outgoing away connections require sharing on this Mac to be turned off first.
 
 **Status: early development.** Build from source for local use and contribution. Public installers are not available yet. Hardware, multi-monitor and network testing remain incomplete. Keep another way to reach an unattended Mac.
 
@@ -53,7 +53,7 @@ python3 Scripts/dev.py ios
 
 In Xcode, select **Trunkline**, your device and your own signing team. Copy `Config/Local.xcconfig.example` to ignored `Config/Local.xcconfig` for local signing settings. Run the app on your device. Personal signing supports development under Apple’s provisioning limits.
 
-Start access in the Mac app, pair the companion on the same network, and verify Desktop and Terminal before trying away access. See [development](docs/DEVELOPMENT.md) and [security](SECURITY.md).
+Turn on sharing in the Mac app, pair the companion on the same network, and verify Desktop and Terminal before trying away access. See [development](docs/DEVELOPMENT.md) and [security](SECURITY.md).
 
 ## Desktop controls
 

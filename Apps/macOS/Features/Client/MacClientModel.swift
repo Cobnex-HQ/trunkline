@@ -65,7 +65,7 @@ final class MacClientModel: ObservableObject {
                 error = "This pairing link belongs to this Mac. Copy the link from the other Mac."; return
             }
             if away && (localHost.isRunning || localHost.isStarting) {
-                error = "Stop this Mac’s remote access in Connection before starting an away connection."; return
+                error = "Turn off sharing in My Mac → Sharing before starting an away connection."; return
             }
             if let ticket = source.remote { try SecretStore.write(JSONEncoder().encode(ticket), key: RemoteAccessTicket.storageKey(source.fingerprint)) }
             let local = try PairingDetails(host: source.host, port: source.port, fingerprint: source.fingerprint)

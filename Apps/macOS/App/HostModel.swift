@@ -19,9 +19,11 @@ final class HostModel: ObservableObject {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
         panel.message = "Only this folder will be accessible through Trunkline file transfer."
-        if panel.runModal() == .OK, let url = panel.url {
-            stop(); sharedFolderPath = url.path
-            UserDefaults.standard.set(url.path, forKey: "shared-folder")
+        if panel.runModal() == .OK, let url = panel.url, url.path != sharedFolderPath {
+            HostSharingAction.changeFolder.perform(connected: isConnected, runningTerminals: terminals.runningCount) {
+                stop(); sharedFolderPath = url.path
+                UserDefaults.standard.set(url.path, forKey: "shared-folder")
+            }
         }
     }
     @Published var address = ""
@@ -82,7 +84,8 @@ final class HostModel: ObservableObject {
         guard HostLaunchPolicy.shouldStartAccess(hasPasscode: hasPasscode) else { return }
         await start()
     }
-    func savePasscode(_ passcode: String) {
+    @discardableResult func savePasscode(_ passcode: String) -> Bool {
+        guard HostSharingAction.changePasscode.perform(connected: isConnected, runningTerminals: terminals.runningCount, operation: {}) else { return false }
         error = nil
         do {
             let record = try PasscodeRecord(passcode: passcode)
@@ -90,7 +93,17 @@ final class HostModel: ObservableObject {
             hasPasscode = true
             // Changing the passcode revokes every current connection.
             stop()
-        } catch { self.error = error.localizedDescription }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
+    func requestTurnOffSharing() {
+        HostSharingAction.turnOff.perform(connected: isConnected, runningTerminals: terminals.runningCount) { stop() }
+    }
+    func requestDisconnectDevice() {
+        HostSharingAction.disconnect.perform(connected: isConnected, runningTerminals: terminals.runningCount) { disconnect() }
+    }
+    func requestDisableAway() {
+        HostSharingAction.disableAway.perform(connected: isConnected, runningTerminals: terminals.runningCount) { away.disable() }
     }
     private func recordReadiness(_ state: String, reason: String? = nil) {
         #if DEBUG

@@ -8,6 +8,7 @@ struct FilesView: View {
     @ObservedObject var files: ClientFiles
     var embedded = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var showImporter = false
     @State private var showDisconnectConfirmation = false
     @State private var renameTarget: RemoteFile?
@@ -42,12 +43,15 @@ struct FilesView: View {
             List {
                 if let name = files.transferName {
                     Section("Transferring") {
-                        Text(name).lineLimit(1)
+                        Text(name).font(.subheadline.weight(.medium)).lineLimit(textSize.isAccessibilitySize ? nil : 2)
                         ProgressView(value: files.progress)
-                        HStack {
+                        let statusLayout = textSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
+                            statusLayout {
                             Text(files.isCancelling ? "Cancelling…" : "\(Int(files.progress * 100))% · Keep Trunkline open")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Spacer()
+                                .fixedSize(horizontal: false, vertical: true)
+                            if !textSize.isAccessibilitySize { Spacer() }
                             if files.features.contains(.cancellation) {
                                 Button("Cancel", role: .cancel) { files.cancelTransfer() }.frame(minHeight: 44).disabled(files.isCancelling)
                             } else {
@@ -83,7 +87,8 @@ struct FilesView: View {
                                 HStack(spacing: 12) {
                                     Image(systemName: file.isDirectory ? "folder.fill" : "doc").foregroundStyle(.tint).frame(width: 28)
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(file.name).foregroundStyle(.primary).lineLimit(2)
+                                        Text(file.name).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                                            .lineLimit(textSize.isAccessibilitySize ? nil : 2)
                                         if !file.isDirectory { Text(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file)).font(.caption).foregroundStyle(.secondary) }
                                     }
                                     Spacer(minLength: 4)
@@ -111,7 +116,7 @@ struct FilesView: View {
                         .disabled(files.isBusy)
                         .contextMenu { if files.features.contains(.mutations) { fileActions(file) } }
                     }
-                } header: { Text(files.path.isEmpty ? "Shared folder" : files.path) }
+                } header: { Text(files.path.isEmpty ? "Shared folder" : files.path).textCase(nil) }
                 Section {
                     Button("Upload file to Mac", systemImage: "square.and.arrow.up") { showImporter = true }.disabled(files.isBusy || !files.canUploadHere)
                 } footer: {

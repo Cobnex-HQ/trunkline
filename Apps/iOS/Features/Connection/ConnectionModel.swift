@@ -256,7 +256,7 @@ final class ConnectionModel: ObservableObject {
             let timeout = DispatchWorkItem { [weak self] in
                 guard let self, self.connectionID == id, self.phase != .connected else { return }
                 let message = self.phase == .connecting
-                    ? "Couldn’t reach your Mac. Start remote access on the Mac, allow Local Network access on iPhone, and check that both devices use the same Wi-Fi or private VPN."
+                    ? "Couldn’t reach your Mac. Turn on My Mac → Sharing on the Mac, allow Local Network access on this device, and check that both devices use the same Wi-Fi or private VPN."
                     : "The Mac didn’t confirm your passcode. Check the Mac’s connection status and try again."
                 self.disconnect(); self.error = message
             }

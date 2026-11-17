@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Darwin
 #if canImport(TrunklineCore)
 import TrunklineCore
@@ -135,7 +136,8 @@ final class TerminalSession {
 }
 
 @MainActor
-final class TerminalSessions {
+final class TerminalSessions: ObservableObject {
+    @Published private(set) var summaries: [TerminalSessionInfo] = []
     private var sessions: [TerminalSession] = []
     private var attached: UUID?
     private var removals: Set<UUID> = []
@@ -197,7 +199,10 @@ final class TerminalSessions {
         }
         return true
     }
-    private func publish() { send?(.terminals(sessions.map(\.info))) }
+    private func publish() {
+        summaries = sessions.map(\.info)
+        send?(.terminals(summaries))
+    }
     private func remove(_ id: UUID) {
         sessions.removeAll { $0.id == id }
         removals.remove(id)

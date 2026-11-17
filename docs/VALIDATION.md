@@ -2,6 +2,16 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Native UI and sharing controls — 2026-11-17
+
+- Selected a native grouped workspace after comparing three layout proposals. Updated connection, desktop, controls, terminal, files, help and Mac settings while retaining the Glacier theme and system appearance option.
+- Passed 35 tooling, 104 shared Swift, 11 Rust, 61 companion and 3 UIKit viewport tests. Native terminal/power checks and sharing-confirmation checks passed, including cancellation and preserving running terminal jobs.
+- The final Mac functional run passed four tests. The opt-in live-stream test and unavailable native window capture were skipped. Ten Mac window captures had already been reviewed in light and dark appearance.
+- Reviewed eight main mobile views across both devices, portrait/landscape and light/dark appearance. Detailed sheets, menus and confirmations were also captured on iPhone portrait/light and iPad landscape/dark. The iPad file picker needed a longer simulator-provider startup wait before displaying its native content.
+- Signed builds were installed on the Mac, iPhone and iPad. The Mac update preserved its signing requirement, passed bundle verification and restarted its sharing listener and keep-awake assertion. No Mac terminal jobs were running during installation.
+- Both mobile devices were locked after the final installation, so their final launches require local unlock. Simulator captures do not substitute for this device check.
+- Screenshot fixtures use synthetic data. They do not verify live streaming, camera scanning, authentication or physical touch input. Physical-device acceptance remains required.
+
 ## Native terminal list and confirmed shutdown — 2026-11-17
 
 - iPhone and iPad simulators each passed 61 companion tests. New coverage checks UIKit section grouping and selection, duplicate end requests, confirmation before removal, timeout recovery and disconnect cleanup.

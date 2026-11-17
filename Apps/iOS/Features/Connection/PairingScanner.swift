@@ -18,9 +18,13 @@ struct PairingScanner: View {
                 if authorized && scenePhase == .active {
                     ScannerCamera { link in onScan(link); dismiss() } onError: { message = $0; authorized = false }
                         .ignoresSafeArea(edges: .bottom)
-                        .overlay(alignment: .bottom) {
+                        .safeAreaInset(edge: .bottom) {
                             Text("Point at the QR code in the Mac app.")
-                                .padding().background(.regularMaterial, in: Capsule()).padding(.bottom, 32)
+                                .font(.body).multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding().frame(maxWidth: .infinity)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                .padding()
                         }
                 } else {
                     ContentUnavailableView {

@@ -7,6 +7,7 @@ struct ConnectedTabs: View {
     @ObservedObject var model: ConnectionModel
     @State private var selection: WorkspaceSection
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .subheadline) private var sidebarWidth: CGFloat = 220
     // iPad can overlay the terminal's input accessory while a hardware keyboard
     // is connected. Keep status in the scrollable sidebar, clear of that row.
@@ -23,7 +24,12 @@ struct ConnectedTabs: View {
                 List(selection: Binding<WorkspaceSection?>(get: { selection }, set: { if let value = $0 { selection = value } })) {
                     Section("Workspace") {
                         ForEach([WorkspaceSection.desktop, .controls, .terminal, .files]) { section in
-                            NavigationLink(value: section) { Label(section.title, systemImage: section.systemImage) }
+                            NavigationLink(value: section) {
+                                Label(section.title, systemImage: section.systemImage)
+                                    .foregroundStyle(selection == section
+                                                     ? (colorScheme == .dark ? Color("ControlSurface") : .white)
+                                                     : .primary)
+                            }
                         }
                     }
                     if statusInSidebar {
@@ -35,7 +41,7 @@ struct ConnectedTabs: View {
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { MacSwitchMenu(model: model) } }
                 .navigationSplitViewColumnWidth(min: 180, ideal: min(sidebarWidth, 400), max: max(280, min(sidebarWidth, 440)))
                 .safeAreaInset(edge: .bottom) {
-                    if !statusInSidebar { connectionStatus.padding(16) }
+                    if !statusInSidebar { connectionStatus.padding() }
                 }
             } detail: {
                 switch selection {
@@ -53,7 +59,7 @@ struct ConnectedTabs: View {
             if !textSize.isAccessibilitySize {
                 Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
             }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(model.name).font(.footnote.weight(.medium))
                 Text(model.useAwayAccess ? "Away connection" : "Local Wi-Fi")
                     .font(.caption).foregroundStyle(.secondary)

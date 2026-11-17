@@ -8,9 +8,19 @@ struct AppHelpView: View {
         NavigationStack {
             Form {
                 Section {
-                    Label("Install and open the Trunkline host on your Mac.", systemImage: "desktopcomputer")
-                    Label("Allow screen recording and input control on the Mac, then start access.", systemImage: "hand.point.up.left")
-                    Label("Scan the Mac’s QR code and enter its connection passcode here.", systemImage: "qrcode.viewfinder")
+                    HStack {
+                        Image("ElephantLogo").resizable().scaledToFit().frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
+                        VStack(alignment: .leading) {
+                            Text("Trunkline").font(.headline)
+                            Text("Your Mac, within reach.").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 4)
+                }
+                Section {
+                    setupStep(1, title: "Open Trunkline", detail: "Install and open the Trunkline host on your Mac.")
+                    setupStep(2, title: "Turn on sharing", detail: "Allow screen recording and input control on the Mac, then turn on My Mac → Sharing.")
+                    setupStep(3, title: "Pair your device", detail: "Scan the Mac’s QR code and enter its connection passcode here.")
                     Link("Mac setup guide", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline#readme")!)
                 } header: { Text("Connect your Mac") } footer: {
                     Text("Requires a Mac running macOS 15 or later. Start on the same local network. Away access must be configured and tested before you leave.")
@@ -26,13 +36,29 @@ struct AppHelpView: View {
                 }
                 Section {
                     Link("Get help or report a problem", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/issues")!)
-                } footer: {
+                } header: { Text("Support") } footer: {
                     Text("Remove passcodes, pairing links and personal information before posting a public issue.")
                 }
             }
+            .formStyle(.grouped)
+            .frame(maxWidth: 700).frame(maxWidth: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Help and privacy")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+    }
+    private func setupStep(_ number: Int, title: String, detail: String) -> some View {
+        Label {
+            VStack(alignment: .leading) {
+                Text(title).font(.headline)
+                Text(detail).font(.body).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } icon: {
+            Image(systemName: "\(number).circle").foregroundStyle(.tint)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }

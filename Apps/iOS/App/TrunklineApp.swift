@@ -84,6 +84,7 @@ struct ConnectView: View {
     @State private var usePasscode = false
     @State private var showHelp = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var textSize
     private var pairing: PairingDetails? { try? PairingDetails.parse(model.pairingText) }
     private var connecting: Bool { model.phase != .setup }
     var body: some View {
@@ -95,30 +96,11 @@ struct ConnectView: View {
                         Image("ElephantLogo").resizable().scaledToFit().frame(width: 40, height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(pairing == nil ? "Pair your Mac" : model.name).font(.callout.weight(.semibold))
-                            Text(pairing?.host ?? "Scan its QR code to connect.").font(.caption).foregroundStyle(.secondary)
+                            Text(pairing == nil ? "Pair your Mac" : model.name).font(.headline)
+                            Text(pairing?.host ?? "Scan its QR code to connect.").font(.subheadline).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }.padding(.vertical, 4)
-                }
-                if !model.savedMacs.isEmpty {
-                    Section("My Macs") {
-                        ForEach(model.savedMacs) { mac in
-                            Button { model.selectMac(mac.id) } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "desktopcomputer")
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(mac.name).foregroundStyle(.primary)
-                                        if let address = try? PairingDetails.parse(mac.link).host {
-                                            Text(address).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                    }
-                                    Spacer()
-                                    if model.selectedMacID == mac.id { Image(systemName: "checkmark").accessibilityLabel("Selected") }
-                                }.frame(minHeight: 36)
-                            }.disabled(connecting)
-                        }
-                        Button("Add Mac", systemImage: "plus") { scanner = true }.disabled(connecting)
-                    }
                 }
                 if pairing == nil {
                     Section {
@@ -132,31 +114,60 @@ struct ConnectView: View {
                         }
                     } footer: { Text("Open Trunkline on your Mac to show its QR code.") }
                 } else {
-                    if model.hasAwayAccess {
-                        Section("Connection") {
+                    Section("Connection") {
+                        if model.hasAwayAccess {
                             Picker("Route", selection: $model.useAwayAccess) {
                                 Text("Local Wi-Fi").tag(false); Text("Away").tag(true)
                             }.pickerStyle(.segmented).disabled(connecting)
                         }
-                    }
-                    Section {
                         if model.canUnlockSaved && model.passcode.isEmpty && !connecting && !usePasscode {
                             Button { Task { await model.unlockSaved() } } label: {
-                                Label("Unlock and connect", systemImage: "lock.open").frame(maxWidth: .infinity, minHeight: 28)
-                            }.buttonStyle(.borderedProminent)
+                                Label("Unlock and connect", systemImage: "lock.open").foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity, minHeight: 32)
+                            }.buttonStyle(.borderedProminent).tint(Color("ControlSurface"))
                             Button("Use passcode instead") { usePasscode = true; passcodeFocused = true }
+                            Toggle("Save passcode", isOn: $model.rememberPasscode)
                         } else {
                             ConnectionPasscodeField(text: $model.passcode, focused: $passcodeFocused,
                                                     enabled: !connecting, submit: connect)
                                 .id("connection-passcode")
                             if !connecting {
-                                Button("Connect", action: connect).disabled(model.passcode.isEmpty)
-                                    .buttonStyle(.borderedProminent).frame(maxWidth: .infinity, minHeight: 44)
+                                Toggle("Save passcode", isOn: $model.rememberPasscode)
+                                Button(action: connect) {
+                                    Text("Connect").frame(maxWidth: .infinity, minHeight: 32)
+                                }.buttonStyle(.borderedProminent).tint(Color("ControlSurface")).disabled(model.passcode.isEmpty)
                             }
                         }
                         if connecting {
-                            HStack(spacing: 12) { GlacierLoadingIndicator(); Text(model.connectionStatus).font(.subheadline); Spacer(); Button("Cancel") { model.disconnect() } }
-                        } else { Toggle("Save passcode", isOn: $model.rememberPasscode) }
+                            let statusLayout = textSize.isAccessibilitySize
+                                ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
+                            statusLayout {
+                                GlacierLoadingIndicator()
+                                Text(model.connectionStatus).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                                if !textSize.isAccessibilitySize { Spacer() }
+                                Button("Cancel") { model.disconnect() }.frame(minHeight: 44)
+                            }
+                        }
+                    }
+                }
+                if !model.savedMacs.isEmpty {
+                    Section("My Macs") {
+                        ForEach(model.savedMacs) { mac in
+                            Button { model.selectMac(mac.id) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "desktopcomputer")
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(mac.name).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                                        if let address = try? PairingDetails.parse(mac.link).host {
+                                            Text(address).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if model.selectedMacID == mac.id { Image(systemName: "checkmark").accessibilityLabel("Selected") }
+                                }.frame(minHeight: 44)
+                            }.disabled(connecting)
+                        }
+                        Button("Add Mac", systemImage: "plus") { scanner = true }.disabled(connecting)
                     }
                 }
                 if let error = model.error {
@@ -165,8 +176,8 @@ struct ConnectView: View {
                         Button("Device settings") { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) }
                     }
                 }
-                Section { AppearancePicker() }
-                Section {
+                Section("Appearance") { AppearancePicker() }
+                Section("Support") {
                     Button("Help and Mac setup", systemImage: "questionmark.circle") { showHelp = true }
                     Link("Privacy notice", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md")!)
                     Link("Open-source acknowledgments", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/THIRD_PARTY.md")!)
@@ -182,7 +193,7 @@ struct ConnectView: View {
             .onChange(of: model.selectedMacID) { _, _ in passcodeFocused = false; usePasscode = false }
             .formStyle(.grouped)
             .nativeWorkspaceStyle()
-            .frame(maxWidth: 700).frame(maxWidth: .infinity)
+            .frame(maxWidth: 600).frame(maxWidth: .infinity)
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Trunkline")
             .toolbar {
@@ -217,7 +228,7 @@ struct ClipboardView: View {
         NavigationStack {
             Form {
                 Section("Send to Mac") {
-                    TextEditor(text: $outgoing).frame(minHeight: 100).accessibilityLabel("Clipboard text")
+                    TextEditor(text: $outgoing).frame(minHeight: 160).accessibilityLabel("Clipboard text")
                     PasteButton(payloadType: String.self) { outgoing = $0.joined(separator: "\n") }
                     Button("Copy to Mac", systemImage: "arrow.up.doc") {
                         files.clipboardError = nil
@@ -225,7 +236,8 @@ struct ClipboardView: View {
                     }.disabled(outgoing.isEmpty || outgoing.utf16.count > 65536)
                 }
                 Section("Mac clipboard") {
-                    Text(files.clipboardText.isEmpty ? "The Mac clipboard contains no text." : files.clipboardText).textSelection(.enabled)
+                    Text(files.clipboardText.isEmpty ? "The Mac clipboard contains no text." : files.clipboardText)
+                        .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                     Button("Copy to this device", systemImage: "doc.on.doc") { UIPasteboard.general.string = files.clipboardText }
                         .disabled(files.clipboardText.isEmpty)
                 }
@@ -238,7 +250,11 @@ struct ClipboardView: View {
                         }
                     }
                 }
-            }.navigationTitle("Clipboard")
+            }
+            .nativeWorkspaceStyle()
+            .frame(maxWidth: 780).frame(maxWidth: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Clipboard")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }

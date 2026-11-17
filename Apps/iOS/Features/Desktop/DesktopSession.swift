@@ -169,7 +169,7 @@ struct DesktopView: View {
                         Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(.secondary)
                             .frame(width: 36).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(model.name).font(.callout.weight(.semibold))
+                            Text(model.name).font(.headline).fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 5) {
                                 Circle().fill(desktop.hostReady ? Color.green : Color.orange).frame(width: 5, height: 5)
                                 Text(desktop.hostReady ? "Ready" : desktop.busy ? "Preparing" : desktop.error == nil ? "Not connected" : "Unavailable")
@@ -188,10 +188,11 @@ struct DesktopView: View {
                     } label: {
                         HStack {
                             Label(desktop.pin == nil ? "Open desktop" : "Pairing…", systemImage: "arrow.up.right.square")
+                                .foregroundStyle(.white)
                             Spacer()
                             if desktop.busy { GlacierLoadingIndicator(size: 28) }
-                        }.frame(minHeight: 32)
-                    }.disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
+                        }.frame(maxWidth: .infinity, minHeight: 32)
+                    }.buttonStyle(.borderedProminent).tint(Color("ControlSurface")).disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
                     if desktop.busy { Button("Cancel", role: .cancel) { desktop.cancelPreparation() } }
                 }
                 if let error = desktop.error {
@@ -200,16 +201,14 @@ struct DesktopView: View {
                 if controls.snapshot?.desktopDisplays?.isAvailable == true {
                     Section("Display") { DesktopDisplayMenu(controls: controls) }
                 }
-                Section("Stream") {
+                Section {
                     Picker("Input", selection: $desktop.inputMode) { ForEach(DesktopInputMode.allCases) { Text($0.title).tag($0) } }
                     Picker("Quality", selection: $desktop.profile) { ForEach(StreamProfile.allCases) { Text($0.title).tag($0) } }
                     LabeledContent("Connection", value: model.useAwayAccess ? "Direct · Away" : "Local Wi-Fi")
+                } header: { Text("Stream") } footer: {
+                    Text("Pinch to zoom. Use two fingers to pan when zoomed.")
                 }
-                Section {
-                    Label("Pinch to zoom. Use two fingers to pan when zoomed.", systemImage: "hand.pinch")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Section { AppearancePicker() }
+                Section("Appearance") { AppearancePicker() }
             }
             .nativeWorkspaceStyle()
             .frame(maxWidth: 780).frame(maxWidth: .infinity)
@@ -252,9 +251,10 @@ struct DesktopView: View {
                         Section {
                             Picker("Motion", selection: $desktop.pacing) { ForEach(StreamPacingMode.allCases) { Text($0.title).tag($0) } }
                             Toggle("Statistics", isOn: $desktop.stats)
-                        }
-                        Section { Text(desktop.inputMode.detail).foregroundStyle(.secondary) }
-                    }.navigationTitle("Stream settings").navigationBarTitleDisplayMode(.inline)
+                        } header: { Text("Playback") } footer: { Text(desktop.inputMode.detail) }
+                    }
+                    .nativeWorkspaceStyle()
+                    .navigationTitle("Stream settings")
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { settings = false } } }
                 }.presentationDetents([.medium, .large])
             }
@@ -301,7 +301,7 @@ private struct DesktopScreen: View {
     @SwiftUI.State private var monitorSwitching = false
     var body: some View {
         VStack(spacing: 0) {
-            DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
+            desktopSurface
                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
                 .allowsHitTesting(pendingMonitorID == nil && !monitorSwitching)
                 .overlay {
@@ -364,11 +364,14 @@ private struct DesktopScreen: View {
         .sheet(isPresented: $paste) {
             NavigationStack {
                 Form {
-                    TextEditor(text: $text).focused($textFocused).font(.system(.body, design: .monospaced)).frame(minHeight: 180)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to send")
-                    PasteButton(payloadType: String.self) { text = $0.joined(separator: "\n") }
-                    Text("Review commands before sending. Newlines may execute them on your Mac.").font(.footnote).foregroundStyle(.secondary)
-                }.navigationTitle("Send text")
+                    Section {
+                        TextEditor(text: $text).focused($textFocused).font(.system(.body, design: .monospaced)).frame(minHeight: 220)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to send")
+                        PasteButton(payloadType: String.self) { text = $0.joined(separator: "\n") }
+                    } footer: {
+                        Text("Review commands before sending. Newlines may execute them on your Mac.")
+                    }
+                }.nativeWorkspaceStyle().navigationTitle("Send text")
                     .task { textFocused = true }
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { text = ""; paste = false } }
@@ -376,6 +379,19 @@ private struct DesktopScreen: View {
                     }
             }
         }
+    }
+    @ViewBuilder private var desktopSurface: some View {
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--ui-review") {
+            ContentUnavailableView("Desktop preview", systemImage: "desktopcomputer",
+                                   description: Text("Use the toolbar to explore desktop controls."))
+                .preferredColorScheme(.dark)
+        } else {
+            DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
+        }
+        #else
+        DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
+        #endif
     }
     private func updateDisplayGeometry(_ snapshot: MacControlSnapshot?) {
         let selection = snapshot?.desktopDisplays
@@ -428,7 +444,7 @@ private struct DesktopScreen: View {
         NavigationStack {
             List {
                 Section("Touch the Mac") {
-                    Label("In direct-touch mode, tap to click; move one finger to drag.", systemImage: "hand.tap")
+                    Label("In direct-touch mode, tap to click. Move one finger to drag.", systemImage: "hand.tap")
                     Label("Use Keyboard in the toolbar to type on your Mac.", systemImage: "keyboard")
                 }
                 Section("Zoom and move the view") {
@@ -436,7 +452,7 @@ private struct DesktopScreen: View {
                 }
                 Section("Mac Spaces and windows") {
                     Label("Swipe left or right with three fingers to change Spaces.", systemImage: "arrow.left.arrow.right")
-                    Label("Swipe up with three fingers for Mission Control; down for App windows.", systemImage: "rectangle.3.group")
+                    Label("Swipe up with three fingers for Mission Control. Swipe down for App windows.", systemImage: "rectangle.3.group")
                     Text("These actions use the Mac’s Control–Arrow keyboard shortcuts. You can also use the Spaces and windows menu.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -445,22 +461,27 @@ private struct DesktopScreen: View {
                     Text("Spaces are virtual desktops on a monitor. Create or rearrange them in Mission Control.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-            }.navigationTitle("Desktop gestures").navigationBarTitleDisplayMode(.inline)
+            }.nativeWorkspaceStyle().font(.body)
+                .navigationTitle("Desktop gestures")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showGestures = false } } }
         }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
     @ViewBuilder private var shortcutCommands: some View {
-            key("Escape", 0x1B); key("Tab", 0x09)
-            key("Copy", 0x43, 0x08); key("Paste", 0x56, 0x08); key("Cut", 0x58, 0x08)
-            key("Undo", 0x5A, 0x08); key("Select all", 0x41, 0x08); key("Save", 0x53, 0x08)
-            key("Switch app", 0x09, 0x08); key("Spotlight", 0x20, 0x08)
-            key("Interrupt", 0x43, 0x02)
-            Menu("Function keys") { ForEach(1...12, id: \.self) { number in key("F\(number)", UInt16(0x6F + number)) } }
+            Button("Send text…") { paste = true }
+            Menu("Editing") {
+                key("Copy", 0x43, 0x08); key("Paste", 0x56, 0x08); key("Cut", 0x58, 0x08)
+                key("Undo", 0x5A, 0x08); key("Select all", 0x41, 0x08); key("Save", 0x53, 0x08)
+            }
             Menu("Navigation") {
+                key("Escape", 0x1B); key("Tab", 0x09)
                 key("Home", 0x24); key("End", 0x23); key("Page up", 0x21); key("Page down", 0x22)
                 key("Left", 0x25); key("Up", 0x26); key("Right", 0x27); key("Down", 0x28)
             }
-            Button("Send text…") { paste = true }
+            Menu("Function keys") { ForEach(1...12, id: \.self) { number in key("F\(number)", UInt16(0x6F + number)) } }
+            Menu("System") {
+                key("Switch app", 0x09, 0x08); key("Spotlight", 0x20, 0x08)
+                key("Interrupt", 0x43, 0x02)
+            }
     }
     private var trailingTools: some View {
         Group {
@@ -479,3 +500,15 @@ private struct DesktopScreen: View {
     }
 
 }
+
+#if DEBUG && targetEnvironment(simulator)
+/// Exercises the production viewer chrome without creating a streaming controller.
+struct DesktopExperienceReview: View {
+    @ObservedObject var model: ConnectionModel
+    private let engine = TrunklineStream()
+    private let configuration = StreamConfiguration()
+    var body: some View {
+        DesktopScreen(engine: engine, config: configuration, model: model, close: {})
+    }
+}
+#endif

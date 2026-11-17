@@ -16,10 +16,24 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 targets:
+  UIReviewScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+    - Tests/UIReview
+    dependencies:
+    - target: Trunkline
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.ui-review
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: Trunkline
   MacClientTests:
     type: bundle.unit-test
     platform: macOS
     sources:
+    - Tests/MacClient/HostSharingLayoutTests.swift
     - Tests/MacClient/MacDesktopTests.swift
     - Tests/MacClient/MacVideoTests.m
     - Tests/MacClient/MacStreamIntegrationTests.swift
@@ -390,6 +404,16 @@ targets:
         GCC_C_LANGUAGE_STANDARD: gnu11
         SKIP_INSTALL: true
 schemes:
+  UIReviewScreenshots:
+    build:
+      targets:
+        UIReviewScreenshots: all
+    test:
+      environmentVariables:
+        TRUNKLINE_CAPTURE_APPEARANCE: light
+        TRUNKLINE_CAPTURE_ORIENTATION: portrait
+      targets:
+      - UIReviewScreenshots
   MacClientTests:
     build:
       targets:

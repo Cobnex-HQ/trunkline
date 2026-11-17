@@ -18,7 +18,7 @@ struct KeepAwakeView: View {
                 Picker("Power mode", selection: Binding(get: { manager.mode }, set: { mode in
                     if mode == .lidClosed { confirmLid = true } else { manager.apply(mode) }
                 })) { ForEach(AwakeMode.allCases) { mode in Text(mode.title).tag(mode) } }
-                Text("Remote sessions keep the Mac and display awake. Closed-lid mode disables system sleep and needs administrator approval; keep the Mac powered and ventilated.")
+                Text("Remote sessions keep the Mac and display awake. Closed-lid mode disables system sleep and needs administrator approval. Keep the Mac powered and ventilated.")
                     .font(.caption).foregroundStyle(.secondary)
                 if manager.needsRecovery {
                     Label("A previous closed-lid session was not shut down cleanly.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)

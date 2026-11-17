@@ -368,6 +368,7 @@ private final class ReviewTerminalView: SessionTerminalView {
         super.layoutSubviews()
         guard !hasSample, bounds.width > 44, bounds.height > 44 else { return }
         hasSample = true
+        getTerminal().setCursorStyle(.steadyBlock)
         feed(text: "\u{001B}[36m~/project\u{001B}[0m % swift build\r\nBuilding for debugging…\r\nBuild complete.\r\n\r\n\u{001B}[36m~/project\u{001B}[0m % ")
     }
 }

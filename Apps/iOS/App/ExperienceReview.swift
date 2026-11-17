@@ -7,13 +7,33 @@ import SwiftUI
 /// Simulator-only presentation fixtures. No credentials, transport or remote actions.
 @MainActor
 struct ExperienceReview: View {
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var model: ConnectionModel
+    private let section = ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] ?? "desktop"
     init() {
+        let section = ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] ?? "desktop"
+        // Keep review state separate from the user's normal saved Macs and preferences.
+        let suite = "com.trunkline.ui-review"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        if section != "connection" && section != "scanner" {
+            var saved = SavedMacStore(defaults: defaults)
+            let studio = try! PairingDetails(host: "studio-mac.example.invalid", port: 443,
+                                            fingerprint: String(repeating: "a", count: 64))
+            let laptop = try! PairingDetails(host: "macbook.example.invalid", port: 443,
+                                            fingerprint: String(repeating: "b", count: 64))
+            saved.save(laptop, name: "MacBook Pro")
+            saved.save(studio, name: "Studio Mac")
+        }
         let creatingTerminal = ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_CREATING_TERMINAL"] == "1"
-        let model = ConnectionModel(terminalCreationTimeout: creatingTerminal ? 600 : 15)
+        let model = ConnectionModel(defaults: defaults, terminalCreationTimeout: creatingTerminal ? 600 : 15)
         let finderWindowID = UUID(uuidString: "00000000-0000-4000-8000-000000000010")!
         let safariWindowID = UUID(uuidString: "00000000-0000-4000-8000-000000000011")!
-        model.pairingText = ""
+        if !section.hasPrefix("connection-") { model.pairingText = "" }
+        if section == "connection-connecting" {
+            model.phase = .connecting
+            model.connectionStatus = "Connecting to Studio Mac…"
+        }
         model.name = "Studio Mac"
         model.roundTripMS = 9
         model.files.send = nil
@@ -88,24 +108,52 @@ struct ExperienceReview: View {
                        RemoteFile(name: "Glacier Fold — interface review and accessibility notes.pdf", path: "Glacier Fold — interface review and accessibility notes.pdf", isDirectory: false, size: 12582912),
                        RemoteFile(name: "Release 2.txt", path: "Release 2.txt", isDirectory: false, size: 1024),
                        RemoteFile(name: "Release 10.txt", path: "Release 10.txt", isDirectory: false, size: 4096)]
-        model.files.entries = entries
+        let shownEntries = section == "files-empty" ? [] : entries
+        model.files.entries = shownEntries
+        model.files.clipboardText = "Project notes\nReview the latest build on Studio Mac."
+        if section == "files-transfer" {
+            model.files.transferName = "Design notes.pdf"
+            model.files.progress = 0.42
+        }
+        if section == "files-downloaded" {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Review notes.txt")
+            try? "Synthetic screenshot fixture. No remote file was downloaded.\n".write(to: url, atomically: true, encoding: .utf8)
+            model.files.downloadedURL = url
+        }
         model.files.send = { [weak files = model.files] message in
             if case let .listFiles(path) = message {
-                let children = path.isEmpty ? entries : [RemoteFile(name: "Project notes.txt", path: "\(path)/Project notes.txt", isDirectory: false, size: 2048)]
+                let children = path.isEmpty ? shownEntries : [RemoteFile(name: "Project notes.txt", path: "\(path)/Project notes.txt", isDirectory: false, size: 2048)]
                 _ = files?.handle(.fileList(path: path, entries: children))
             }
         }
         _model = StateObject(wrappedValue: model)
     }
     var body: some View {
-        if ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] == "help" {
-            AppHelpView()
-        } else {
-        ConnectedTabs(model: model, initialSelection: WorkspaceSection(rawValue: ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] ?? "desktop") ?? .desktop)
+        reviewContent
             .overlay(alignment: .topLeading) {
                 Text("PREVIEW").font(.caption2).dynamicTypeSize(.large).foregroundStyle(.secondary)
-                    .padding(6).background(.regularMaterial, in: Capsule()).padding(6).allowsHitTesting(false)
+                    .padding(6).background(.regularMaterial, in: Capsule()).padding(6)
+                    .accessibilityIdentifier("ui-review-ready")
+                    .accessibilityValue(colorScheme == .dark ? "dark" : "light")
+                    .allowsHitTesting(false)
             }
+    }
+    @ViewBuilder private var reviewContent: some View {
+        switch section {
+        case "help": AppHelpView()
+        case "desktop-session": DesktopExperienceReview(model: model)
+        case "connection", "connection-saved", "connection-connecting": ConnectView(model: model)
+        case "scanner": PairingScanner { _ in }
+        case "clipboard": ClipboardView(files: model.files)
+        case "terminal-detail", "terminal-ended":
+            NavigationStack {
+                if let session = section == "terminal-ended" ? model.sessions.last : model.sessions.first {
+                    SessionDetail(model: model, session: session)
+                }
+            }
+        default:
+            ConnectedTabs(model: model, initialSelection: section.hasPrefix("files-") ? .files :
+                WorkspaceSection(rawValue: section) ?? .desktop)
         }
     }
 }
