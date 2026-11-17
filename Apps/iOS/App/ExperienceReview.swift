@@ -72,7 +72,8 @@ struct ExperienceReview: View {
             }
         }
         model.sessions = [TerminalSessionInfo(id: UUID(), title: "Project · build", kind: .shell, isRunning: true),
-                          TerminalSessionInfo(id: UUID(), title: "Server · logs", kind: .shell, isRunning: true)]
+                          TerminalSessionInfo(id: UUID(), title: "Server · logs", kind: .shell, isRunning: true),
+                          TerminalSessionInfo(id: UUID(), title: "Previous build", kind: .shell, isRunning: false)]
         if ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_EMPTY_TERMINALS"] == "1" { model.sessions = [] }
         if ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_LOADING_TERMINALS"] != "1" {
             model.receiveTerminalSessions(model.sessions)

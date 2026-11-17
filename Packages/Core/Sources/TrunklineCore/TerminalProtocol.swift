@@ -12,7 +12,12 @@ public struct TerminalSessionInfo: Codable, Equatable, Identifiable, Sendable {
     public let title: String
     public let kind: TerminalKind
     public let isRunning: Bool
-    public init(id: UUID, title: String, kind: TerminalKind, isRunning: Bool) { self.id = id; self.title = title; self.kind = kind; self.isRunning = isRunning }
+    /// Missing on older hosts. Running remains true until process cleanup finishes.
+    public let isStopping: Bool?
+    public var statusTitle: String { !isRunning ? "Ended" : isStopping == true ? "Ending…" : "Running" }
+    public init(id: UUID, title: String, kind: TerminalKind, isRunning: Bool, isStopping: Bool? = nil) {
+        self.id = id; self.title = title; self.kind = kind; self.isRunning = isRunning; self.isStopping = isStopping
+    }
 }
 public enum TerminalLimits {
     public static func validInput(_ data: Data) -> Bool { data.count <= 16384 }

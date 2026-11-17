@@ -18,6 +18,8 @@ Use your Mac’s desktop, terminal, files and controls from a native iPhone or i
 
 In **Terminal**, swipe through output or use the up/down history buttons. New output follows only when you are at the bottom. `exit` returns to the session list. Reopen an ended session to read its output, start another session or remove it.
 
+The native iPhone/iPad session list separates **Running sessions** from **Ended sessions**. Swipe a row or hold it for actions. **End session** stops the shell and processes attached to that terminal, then waits for the Mac to confirm. Other sessions keep running. The list covers sessions started in Trunkline, not Terminal.app or iTerm.
+
 In **Controls → Mac → Keep awake**, choose Automatic, Mac, or Mac and display. Active connections already keep the Mac and display awake. An extra hold lasts until changed or the Mac app quits. Closed-lid settings require local setup. Volume, media, brightness, apps, windows, clipboard and power actions are also in Controls. Some actions need Mac permissions.
 
 ## Distribution plan

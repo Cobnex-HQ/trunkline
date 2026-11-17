@@ -2,6 +2,16 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Native terminal list and confirmed shutdown — 2026-11-17
+
+- iPhone and iPad simulators each passed 61 companion tests. New coverage checks UIKit section grouping and selection, duplicate end requests, confirmation before removal, timeout recovery and disconnect cleanup.
+- A real Mac PTY regression reproduced a stubborn foreground process surviving the old close path. The corrected path stops it, waits before removing the session, preserves another terminal and waits for cleanup on host quit.
+- Passed 35 tooling, 102 shared Swift and 11 Rust tests, plus the native terminal and remote-power checks. Older session messages remain compatible.
+- Reviewed the UIKit session list on iPhone in light mode and iPad in dark mode. Running sessions and ended history have separate sections with native swipe actions and confirmation dialogs.
+- Signed builds were installed on both devices. Both were locked, so physical-device launch and hands-on session acceptance remain pending.
+- Installed and opened the signed Mac update at the same path with the same signing requirement. No terminal jobs were running. Verified remote-access readiness, the listening port and the system-awake assertion after restart.
+- Shutdown covers processes in the terminal’s POSIX session. Processes that deliberately detach into a different session are outside this scope. The list does not include sessions created by Terminal.app or iTerm.
+
 ## Terminal scrolling, exit and remote power — 2026-11-17
 
 - Both iPhone and iPad simulators passed 58 companion tests. Regressions cover scroll position during output, following the latest output, history paging versus full-screen app keys, read-only ended sessions and exit navigation.

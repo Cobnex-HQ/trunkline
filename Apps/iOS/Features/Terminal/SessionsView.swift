@@ -11,41 +11,13 @@ struct SessionsView: View {
     }
     var body: some View {
         NavigationStack(path: path) {
-            List {
-                Section("Sessions") {
-                    ForEach(model.sessions) { session in
-                        NavigationLink(value: session.id) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "terminal").foregroundStyle(.tint)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(session.title).font(.subheadline.weight(.medium))
-                                    Text(session.isRunning ? session.kind.title + " · Running" : "Session ended")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }.padding(.vertical, 2)
-                            }
-                        }
-                            .accessibilityLabel("Open \(session.title)")
-                    }
-                    if !model.hasLoadedTerminals {
-                        HStack(spacing: 12) { ProgressView(); Text("Loading sessions…") }
-                        Button("Refresh", systemImage: "arrow.clockwise") { model.send(.listTerminals) }
-                    } else if model.sessions.isEmpty {
-                        if model.isCreatingTerminal {
-                            HStack(spacing: 12) { ProgressView(); Text("Starting session…") }
-                        } else {
-                            ContentUnavailableView("No sessions", systemImage: "terminal", description: Text("Run commands on your Mac."))
-                            newSessionMenu
-                        }
-                    }
-                }
-            }
+            TerminalSessionsList(model: model)
             .nativeWorkspaceStyle()
-            .listStyle(.insetGrouped)
             .frame(maxWidth: 840).frame(maxWidth: .infinity)
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Terminal")
             .toolbar {
-                if model.hasLoadedTerminals && !model.sessions.isEmpty {
+                if model.hasLoadedTerminals {
                     ToolbarItem(placement: .topBarTrailing) {
                         if model.isCreatingTerminal { ProgressView().accessibilityLabel("Starting terminal session") }
                         else { newSessionMenu }
@@ -86,6 +58,10 @@ struct SessionDetail: View {
     @ScaledMetric(relativeTo: .subheadline) private var terminalFontSize: CGFloat = 14
     var body: some View {
         VStack(spacing: 0) {
+            if model.isEndingTerminal(session.id) {
+                HStack(spacing: 8) { ProgressView(); Text(session.isRunning ? "Ending session…" : "Removing history…") }
+                    .font(.subheadline).padding(12).frame(maxWidth: .infinity).background(.bar)
+            }
             if !session.isRunning {
                 HStack {
                     Text("Session ended").foregroundStyle(.secondary)
@@ -93,7 +69,7 @@ struct SessionDetail: View {
                     Button("New session") { model.createTerminal(session.kind) }.disabled(model.isCreatingTerminal)
                 }.font(.subheadline).padding(12).background(.bar)
             }
-            TerminalSurface(model: model, sessionID: session.id, showKeyboard: $keyboard, fontSize: terminalFontSize, input: input, acceptsInput: session.isRunning)
+            TerminalSurface(model: model, sessionID: session.id, showKeyboard: $keyboard, fontSize: terminalFontSize, input: input, acceptsInput: session.isRunning && !model.isEndingTerminal(session.id))
                 .background(.black)
             if !keyboard { ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -103,7 +79,7 @@ struct SessionDetail: View {
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
                     Button("Latest output", systemImage: "arrow.down.to.line") { input.terminal?.jumpToLatest() }
                         .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-                    if session.isRunning {
+                    if session.isRunning && !model.isEndingTerminal(session.id) {
                     ForEach(TerminalShortcut.allCases, id: \.self) { terminalKey($0) }
                     }
                 }.padding(.horizontal, 12).padding(.vertical, 8)
@@ -115,18 +91,18 @@ struct SessionDetail: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button(keyboard ? "Hide keyboard" : "Show keyboard", systemImage: "keyboard") { keyboard.toggle() }.labelStyle(.iconOnly).disabled(!session.isRunning)
+                Button(keyboard ? "Hide keyboard" : "Show keyboard", systemImage: "keyboard") { keyboard.toggle() }.labelStyle(.iconOnly).disabled(!session.isRunning || model.isEndingTerminal(session.id))
                 Menu {
                     Button("Page up", systemImage: "chevron.up") { input.terminal?.pageHistory(up: true) }
                     Button("Page down", systemImage: "chevron.down") { input.terminal?.pageHistory(up: false) }
                     Button("Latest output", systemImage: "arrow.down.to.line") { input.terminal?.jumpToLatest() }
                     Divider()
                     Button("Rename", systemImage: "pencil") { sessionName = session.title; renaming = true }
-                    Button("Paste text…", systemImage: "doc.on.clipboard") { showPaste = true }.disabled(!session.isRunning)
+                    Button("Paste text…", systemImage: "doc.on.clipboard") { showPaste = true }.disabled(!session.isRunning || model.isEndingTerminal(session.id))
                     if session.isRunning {
-                        Button("End session", systemImage: "stop.circle", role: .destructive) { confirmClose = true }
+                        Button("End session", systemImage: "stop.circle", role: .destructive) { confirmClose = true }.disabled(model.isEndingTerminal(session.id))
                     } else {
-                        Button("Remove session", systemImage: "trash", role: .destructive) { model.send(.closeTerminal(id: session.id)); model.selectedTerminalID = nil }
+                        Button("Remove session", systemImage: "trash", role: .destructive) { model.closeTerminal(session.id) }.disabled(model.isEndingTerminal(session.id))
                     }
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Session controls")
             }
@@ -138,8 +114,8 @@ struct SessionDetail: View {
                 .disabled(sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sessionName.count > 80)
         }
         .confirmationDialog("End this terminal session?", isPresented: $confirmClose, titleVisibility: .visible) {
-            Button("End session", role: .destructive) { model.send(.closeTerminal(id: session.id)); model.selectedTerminalID = nil }
-        } message: { Text("This stops the shell and its foreground command on your Mac. Disconnecting keeps them running.") }
+            Button("End session", role: .destructive) { model.closeTerminal(session.id) }
+        } message: { Text("This stops the shell and processes attached to its terminal on your Mac. Other sessions keep running.") }
         .sheet(isPresented: $showPaste) {
             NavigationStack {
                 Form {

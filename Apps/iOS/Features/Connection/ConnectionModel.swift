@@ -45,6 +45,8 @@ final class ConnectionModel: ObservableObject {
     @Published var selectedTerminalID: UUID?
     @Published private(set) var hasLoadedTerminals = false
     @Published private(set) var isCreatingTerminal = false
+    @Published private(set) var closingTerminalIDs: Set<UUID> = []
+    private var terminalCloseDeadlines: [UUID: Task<Void, Never>] = [:]
     private var terminalIDsBeforeCreation: Set<UUID>?
     private var terminalCreationDeadline: Task<Void, Never>?
     #if DEBUG
@@ -71,9 +73,33 @@ final class ConnectionModel: ObservableObject {
         terminalIDsBeforeCreation = nil
         isCreatingTerminal = false
     }
+    func isEndingTerminal(_ id: UUID) -> Bool {
+        closingTerminalIDs.contains(id) || sessions.first(where: { $0.id == id })?.isStopping == true
+    }
+    func closeTerminal(_ id: UUID) {
+        guard phase == .connected, sessions.contains(where: { $0.id == id }), !isEndingTerminal(id) else { return }
+        closingTerminalIDs.insert(id)
+        error = nil
+        terminalCloseDeadlines[id] = Task { [weak self, terminalCloseTimeout] in
+            do { try await Task.sleep(for: .seconds(terminalCloseTimeout)) } catch { return }
+            guard let self, self.closingTerminalIDs.contains(id) else { return }
+            self.finishTerminalClose(id)
+            self.error = "The Mac hasn’t confirmed that the session stopped. Refresh the list before trying again."
+            self.send(.listTerminals)
+        }
+        send(.closeTerminal(id: id))
+    }
+    private func finishTerminalClose(_ id: UUID) {
+        terminalCloseDeadlines.removeValue(forKey: id)?.cancel()
+        closingTerminalIDs.remove(id)
+    }
+    private func clearTerminalCloses() {
+        for id in closingTerminalIDs { finishTerminalClose(id) }
+    }
     func receiveTerminalSessions(_ sessions: [TerminalSessionInfo]) {
         let selectedWasRunning = self.sessions.first { $0.id == selectedTerminalID }?.isRunning == true
         self.sessions = sessions
+        for id in closingTerminalIDs where !sessions.contains(where: { $0.id == id }) { finishTerminalClose(id) }
         hasLoadedTerminals = true
         if let previousIDs = terminalIDsBeforeCreation,
            let created = sessions.first(where: { !previousIDs.contains($0.id) }) {
@@ -96,17 +122,20 @@ final class ConnectionModel: ObservableObject {
     private let heartbeatInterval: TimeInterval
     private let heartbeatTimeout: TimeInterval
     private let terminalCreationTimeout: TimeInterval
+    private let terminalCloseTimeout: TimeInterval
     private let makeChannel: @MainActor (PairingDetails) -> SecureChannel
     init(defaults: UserDefaults = .standard, heartbeatInterval: TimeInterval = 5,
-         heartbeatTimeout: TimeInterval = 15, terminalCreationTimeout: TimeInterval = 15,
+         heartbeatTimeout: TimeInterval = 15, terminalCreationTimeout: TimeInterval = 15, terminalCloseTimeout: TimeInterval = 10,
          makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) }) {
         precondition(heartbeatInterval > 0 && heartbeatTimeout >= heartbeatInterval)
         precondition(terminalCreationTimeout > 0)
+        precondition(terminalCloseTimeout > 0)
         self.defaults = defaults
         self.macStore = SavedMacStore(defaults: defaults)
         self.heartbeatInterval = heartbeatInterval
         self.heartbeatTimeout = heartbeatTimeout
         self.terminalCreationTimeout = terminalCreationTimeout
+        self.terminalCloseTimeout = terminalCloseTimeout
         self.makeChannel = makeChannel
         useAwayAccess = defaults.bool(forKey: "use-away-access")
         let selectionID = macStore.selectedID
@@ -394,7 +423,7 @@ final class ConnectionModel: ObservableObject {
         case .files, .clipboard:
             files.handle(.operationError(text, context: context))
         case .terminal:
-            finishTerminalCreation(); error = text
+            finishTerminalCreation(); clearTerminalCloses(); error = text
         case .desktop:
             if let onDesktopError { onDesktopError(text, context?.requestID) }
             else { error = text }
@@ -424,6 +453,7 @@ final class ConnectionModel: ObservableObject {
     private func resetSession() {
         controls.reset()
         finishTerminalCreation()
+        clearTerminalCloses()
         hasLoadedTerminals = false
         sessions = []; selectedTerminalID = nil; onTerminalData = nil; onDesktopError = nil
         files.reset()

@@ -8,6 +8,8 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <libproc.h>
+#include <sys/proc.h>
 extern char **environ;
 
 pid_t MPStartTerminal(const char *directory, int *masterFD) {
@@ -62,4 +64,27 @@ pid_t MPStartTerminal(const char *directory, int *masterFD) {
 int MPResizeTerminal(int masterFD, unsigned short columns, unsigned short rows) {
     struct winsize size = { .ws_row = rows, .ws_col = columns };
     return ioctl(masterFD, TIOCSWINSZ, &size);
+}
+
+int MPSignalTerminalMembers(pid_t sessionLeader, int signalNumber) {
+    if (sessionLeader <= 1 || sessionLeader == getsid(0)) { errno = EINVAL; return -1; }
+    int bytes = proc_listpids(PROC_ALL_PIDS, 0, NULL, 0);
+    if (bytes <= 0) return -1;
+    bytes += 1024 * (int)sizeof(pid_t);
+    pid_t *pids = calloc(1, (size_t)bytes);
+    if (!pids) return -1;
+    int used = proc_listpids(PROC_ALL_PIDS, 0, pids, bytes);
+    if (used <= 0 || used >= bytes) { free(pids); return -1; }
+    int remaining = 0;
+    for (int i = 0; i < used / (int)sizeof(pid_t); i++) {
+        pid_t candidate = pids[i];
+        if (candidate <= 1 || getsid(candidate) != sessionLeader) continue;
+        struct proc_bsdinfo info;
+        int size = proc_pidinfo(candidate, PROC_PIDTBSDINFO, 0, &info, sizeof(info));
+        if (size == sizeof(info) && info.pbi_status == SZOMB) continue;
+        if (candidate != sessionLeader) remaining++;
+        if (signalNumber != 0 && getsid(candidate) == sessionLeader) kill(candidate, signalNumber);
+    }
+    free(pids);
+    return remaining;
 }

@@ -27,6 +27,12 @@ final class HostAppDelegate: NSObject, NSApplicationDelegate {
         model.stop()
         quitting = true
         Task { @MainActor in
+            guard await model.terminals.shutdown() else {
+                model.error = "Some terminal processes have not stopped. Trunkline will stay open so you can retry."
+                quitting = false
+                NSApplication.shared.reply(toApplicationShouldTerminate: false)
+                return
+            }
             await model.sunshine.shutdown()
             NSApplication.shared.reply(toApplicationShouldTerminate: true)
         }

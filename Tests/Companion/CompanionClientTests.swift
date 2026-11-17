@@ -10,6 +10,70 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testEndingSessionWaitsForMacConfirmationAndDeduplicatesRequests() async throws {
+        let ready = expectation(description: "Terminal close fixture")
+        let session = TerminalSessionInfo(id: UUID(), title: "Running", kind: .shell, isRunning: true)
+        let server = try TerminalCreationServer(ready: ready, sessions: [session])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "terminal-close-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "a", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually { model.sessions.count == 1 }
+        model.selectedTerminalID = session.id
+        model.closeTerminal(session.id)
+        model.closeTerminal(session.id)
+        try await terminalEventually { server.closures == 1 }
+        XCTAssertEqual(model.selectedTerminalID, session.id)
+        XCTAssertEqual(model.sessions.count, 1)
+        XCTAssertTrue(model.isEndingTerminal(session.id))
+        server.publish([])
+        try await terminalEventually { model.sessions.isEmpty }
+        XCTAssertNil(model.selectedTerminalID)
+        XCTAssertFalse(model.isEndingTerminal(session.id))
+    }
+
+    func testUnconfirmedCloseKeepsSessionVisibleAndAllowsRetry() async throws {
+        let model = ConnectionModel(terminalCloseTimeout: 0.1)
+        let id = UUID()
+        model.phase = .connected
+        model.receiveTerminalSessions([TerminalSessionInfo(id: id, title: "No response", kind: .shell, isRunning: true)])
+        model.selectedTerminalID = id
+        model.closeTerminal(id)
+        try await terminalEventually { model.error != nil }
+        XCTAssertEqual(model.selectedTerminalID, id)
+        XCTAssertEqual(model.sessions.count, 1)
+        XCTAssertFalse(model.isEndingTerminal(id))
+        model.closeTerminal(id)
+        XCTAssertTrue(model.isEndingTerminal(id))
+        model.disconnect()
+        XCTAssertFalse(model.isEndingTerminal(id))
+    }
+
+    func testUIKitSessionListGroupsLiveAndEndedSessionsAndOpensCorrectID() async throws {
+        let controller = TerminalSessionsController()
+        controller.loadViewIfNeeded()
+        let ended = TerminalSessionInfo(id: UUID(), title: "Old log", kind: .shell, isRunning: false)
+        let running = TerminalSessionInfo(id: UUID(), title: "Build", kind: .shell, isRunning: true)
+        let stopping = TerminalSessionInfo(id: UUID(), title: "Stopping", kind: .claude, isRunning: true, isStopping: true)
+        var opened: UUID?
+        controller.onOpen = { opened = $0 }
+        controller.update(sessions: [ended, running, stopping], pending: [], loaded: true)
+        try await terminalEventually { controller.tableView.numberOfSections == 2 && controller.tableView.numberOfRows(inSection: 0) == 2 }
+        XCTAssertEqual(controller.tableView.numberOfRows(inSection: 1), 1)
+        controller.tableView(controller.tableView, didSelectRowAt: IndexPath(row: 0, section: 0))
+        XCTAssertEqual(opened, running.id)
+        controller.tableView(controller.tableView, didSelectRowAt: IndexPath(row: 0, section: 1))
+        XCTAssertEqual(opened, ended.id)
+        XCTAssertNil(controller.tableView(controller.tableView, trailingSwipeActionsConfigurationForRowAt: IndexPath(row: 1, section: 0)), "A stopping session must not offer another kill action")
+    }
+
     func testHistoryPagingStaysLocalExceptInFullScreenTerminalApps() async throws {
         let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
         let recorder = TerminalInputRecorder()
@@ -975,6 +1039,7 @@ private struct TerminalKeyboardFixture: View {
     var rejection: String?
     private(set) var authentications = 0
     private(set) var creations = 0
+    private(set) var closures = 0
     init(ready: XCTestExpectation, stopped: XCTestExpectation? = nil,
          disconnected: XCTestExpectation? = nil, sessions: [TerminalSessionInfo]) throws {
         self.sessions = sessions
@@ -1002,6 +1067,8 @@ private struct TerminalKeyboardFixture: View {
                     case .createTerminal:
                         self.creations += 1
                         channel?.send(.terminals(self.sessions))
+                    case .closeTerminal:
+                        self.closures += 1
                     default: break
                     }
                 }
