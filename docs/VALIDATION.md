@@ -8,7 +8,7 @@ Development results are recorded below by date. See [test instructions](TESTING.
 - Passed a real Mac PTY exit test, including final output and creating the next session. Remote keep-awake checks exercise IOKit assertions, active-session protection, local-only lid settings, old-host compatibility and protocol serialization.
 - Passed 35 tooling, 100 shared Swift and 11 Rust tests. CI now includes the native terminal/power checks.
 - Signed iPhone/iPad builds were installed on both devices. Devices were locked, so launch and hands-on acceptance remain pending.
-- Signed Mac build and bundled-runtime verification passed. Its signing requirement matches the installed app. Installation awaits approval to end an existing Claude terminal session. Existing permissions and running work were left intact.
+- Signed Mac build and bundled-runtime verification passed. After approval to end the existing Claude session, the update was installed at the same path with the same signing requirement. Remote access restarted and the Trunkline system-awake assertion was verified. Permissions were not reset.
 
 ## Companion App Store audit — 2026-11-17
 
