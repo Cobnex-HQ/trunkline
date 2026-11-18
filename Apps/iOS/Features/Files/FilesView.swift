@@ -42,7 +42,7 @@ struct FilesView: View {
         NavigationStack {
             List {
                 if let name = files.transferName {
-                    Section("Transferring") {
+                    TrunklineSection("Transferring") {
                         Text(name).font(.subheadline.weight(.medium)).lineLimit(textSize.isAccessibilitySize ? nil : 2)
                         ProgressView(value: files.progress)
                         let statusLayout = textSize.isAccessibilitySize
@@ -61,17 +61,17 @@ struct FilesView: View {
                     }
                 }
                 if files.requiresReconnect {
-                    Section {
+                    TrunklineSection {
                         Text(files.error ?? "Reconnect to continue.").foregroundStyle(.secondary)
                         Button("Disconnect", systemImage: "power") { showDisconnectConfirmation = true }
                     }
                 }
                 if let url = files.downloadedURL {
-                    Section("Downloaded") {
+                    TrunklineSection("Downloaded") {
                         ShareLink(item: url) { Label("Save or share \(url.lastPathComponent)", systemImage: "square.and.arrow.up") }
                     }
                 }
-                Section {
+                TrunklineSection {
                     if !files.path.isEmpty { Button("Parent folder", systemImage: "arrow.turn.up.left") { files.parent() }.disabled(files.isBusy) }
                     if files.isLoading && !files.hasLoadedListing && files.entries.isEmpty { HStack(spacing: 12) { GlacierLoadingIndicator(); Text("Loading folder…") } }
                     else if files.entries.isEmpty {
@@ -118,7 +118,7 @@ struct FilesView: View {
                         .contextMenu { if files.features.contains(.mutations) { fileActions(file) } }
                     }
                 } header: { Text(files.path.isEmpty ? "Shared folder" : files.path).textCase(nil) }
-                Section {
+                TrunklineSection {
                     Button("Upload file to Mac", systemImage: "square.and.arrow.up") { showImporter = true }.disabled(files.isBusy || !files.canUploadHere)
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {

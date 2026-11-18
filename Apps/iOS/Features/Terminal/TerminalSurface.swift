@@ -311,7 +311,7 @@ final class TerminalInputAccessory: UIInputView {
         configuration.title = title
         configuration.image = symbol.flatMap(UIImage.init(systemName:))
         configuration.baseForegroundColor = UIColor(named: "AccentColor") ?? .tintColor
-        configuration.background.cornerRadius = 8
+        configuration.cornerStyle = TrunklineControls.uiKitCornerStyle
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = label

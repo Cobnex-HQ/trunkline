@@ -83,7 +83,7 @@ struct ClipboardView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Send to Mac") {
+                TrunklineSection("Send to Mac") {
                     TextEditor(text: $outgoing).frame(minHeight: verticalSizeClass == .compact ? 96 : 160).accessibilityLabel("Clipboard text")
                     PasteButton(payloadType: String.self) { outgoing = $0.joined(separator: "\n") }
                     Button("Copy to Mac", systemImage: "arrow.up.doc") {
@@ -91,14 +91,14 @@ struct ClipboardView: View {
                         files.send?(.setClipboard(outgoing))
                     }.disabled(outgoing.isEmpty || outgoing.utf16.count > 65536)
                 }
-                Section("Mac clipboard") {
+                TrunklineSection("Mac clipboard") {
                     Text(files.clipboardText.isEmpty ? "The Mac clipboard contains no text." : files.clipboardText)
                         .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                     Button("Copy to this device", systemImage: "doc.on.doc") { UIPasteboard.general.string = files.clipboardText }
                         .disabled(files.clipboardText.isEmpty)
                 }
                 if let error = files.clipboardError {
-                    Section {
+                    TrunklineSection {
                         Text(error).foregroundStyle(.orange)
                         Button("Refresh clipboard", systemImage: "arrow.clockwise") {
                             files.clipboardError = nil

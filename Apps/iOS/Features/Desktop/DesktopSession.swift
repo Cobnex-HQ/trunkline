@@ -164,7 +164,7 @@ struct DesktopView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
+                TrunklineSection {
                     HStack(spacing: 12) {
                         Image(systemName: "desktopcomputer").font(.title2).foregroundStyle(.secondary)
                             .frame(width: 36).accessibilityHidden(true)
@@ -194,33 +194,31 @@ struct DesktopView: View {
                         desktop.display = controls.snapshot?.desktopDisplays?.selectedDisplay?.geometry ?? model.desktopDisplay
                         desktop.openDesktop()
                     } label: {
-                        Label("Open desktop", systemImage: "arrow.up.right.square").lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(.white)
+                        Label("Open desktop", systemImage: "arrow.up.right.square")
+                            .trunklineActionLabel()
                             .padding(.trailing, 28)
-                            .frame(minHeight: 32)
                             .overlay(alignment: .trailing) {
                                 ProgressView().controlSize(.small).tint(.white)
                                     .frame(width: 20)
                                     .opacity(desktop.busy ? 1 : 0)
                                     .accessibilityHidden(true)
                             }
-                    }.buttonStyle(.borderedProminent).tint(Color("ControlSurface")).disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
+                    }.trunklineActionStyle(prominent: true).disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
                 }
                 if let error = desktop.error {
-                    Section { Text(error).foregroundStyle(.orange); Button("Retry") { desktop.openDesktop() }.disabled(desktop.busy) }
+                    TrunklineSection { Text(error).foregroundStyle(.orange); Button("Retry") { desktop.openDesktop() }.disabled(desktop.busy) }
                 }
                 if controls.snapshot?.desktopDisplays?.isAvailable == true {
-                    Section("Display") { DesktopDisplayMenu(controls: controls) }
+                    TrunklineSection("Display") { DesktopDisplayMenu(controls: controls) }
                 }
-                Section {
+                TrunklineSection {
                     Picker("Input", selection: $desktop.inputMode) { ForEach(DesktopInputMode.allCases) { Text($0.title).tag($0) } }
                     Picker("Quality", selection: $desktop.profile) { ForEach(StreamProfile.allCases) { Text($0.title).tag($0) } }
                     LabeledContent("Connection", value: model.useAwayAccess ? "Direct · Away" : "Local Wi-Fi")
                 } header: { Text("Stream") } footer: {
                     Text("Pinch to zoom. Use two fingers to pan when zoomed.")
                 }
-                Section("Appearance") { AppearancePicker() }
+                TrunklineSection("Appearance") { AppearancePicker() }
             }
             .nativeWorkspaceStyle()
             .frame(maxWidth: 780).frame(maxWidth: .infinity)
@@ -260,7 +258,7 @@ struct DesktopView: View {
             .sheet(isPresented: $settings) {
                 NavigationStack {
                     Form {
-                        Section {
+                        TrunklineSection {
                             Picker("Motion", selection: $desktop.pacing) { ForEach(StreamPacingMode.allCases) { Text($0.title).tag($0) } }
                             Toggle("Statistics", isOn: $desktop.stats)
                         } header: { Text("Playback") } footer: { Text(desktop.inputMode.detail) }
@@ -446,20 +444,20 @@ private struct DesktopScreen: View {
     private var gestureHelp: some View {
         NavigationStack {
             List {
-                Section("Touch the Mac") {
+                TrunklineSection("Touch the Mac") {
                     Label("In direct-touch mode, tap to click. Move one finger to drag.", systemImage: "hand.tap")
                     Label("Use Keyboard in the toolbar to type on your Mac.", systemImage: "keyboard")
                 }
-                Section("Zoom and move the view") {
+                TrunklineSection("Zoom and move the view") {
                     Label("Pinch to zoom. When zoomed in, pan with two fingers.", systemImage: "arrow.up.left.and.arrow.down.right")
                 }
-                Section("Mac Spaces and windows") {
+                TrunklineSection("Mac Spaces and windows") {
                     Label("Swipe left or right with three fingers to change Spaces.", systemImage: "arrow.left.arrow.right")
                     Label("Swipe up with three fingers for Mission Control. Swipe down for App windows.", systemImage: "rectangle.3.group")
                     Text("These actions use the Mac’s Control–Arrow keyboard shortcuts. You can also use the Spaces and windows menu.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                Section("Physical monitors") {
+                TrunklineSection("Physical monitors") {
                     Label("Use Displays in the toolbar to switch between connected Mac monitors. Each display keeps its own proportions.", systemImage: "display.2")
                     Text("Spaces are virtual desktops on a monitor. Create or rearrange them in Mission Control.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -516,7 +514,7 @@ private struct DesktopTextSheet: View {
         NavigationStack {
             GeometryReader { geometry in
                 Form {
-                    Section {
+                    TrunklineSection {
                         TextEditor(text: $text)
                             .focused($focused)
                             .font(.system(.body, design: .monospaced))

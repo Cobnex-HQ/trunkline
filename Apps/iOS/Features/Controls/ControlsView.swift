@@ -27,9 +27,9 @@ struct ControlsView: View {
                     let matchingApps = state.apps.filter { appQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(appQuery) }
                     if appQuery.isEmpty {
                         if !state.accessibility {
-                            Section { Label("Enable Accessibility on the Mac for keyboard and window controls.", systemImage: "hand.raised") }
+                            TrunklineSection { Label("Enable Accessibility on the Mac for keyboard and window controls.", systemImage: "hand.raised") }
                         }
-                        Section("Quick actions") {
+                        TrunklineSection("Quick actions") {
                             if textSize.isAccessibilitySize {
                                 ForEach(Self.quickActionControls) { action in
                                     Button { controls.perform(.system(action)) } label: {
@@ -43,7 +43,7 @@ struct ControlsView: View {
                             }
                         }
                     }
-                    Section("Apps") {
+                    TrunklineSection("Apps") {
                         if !appQuery.isEmpty && matchingApps.isEmpty {
                             ContentUnavailableView.search(text: appQuery)
                         }
@@ -71,7 +71,7 @@ struct ControlsView: View {
                         }
                     }
                     if appQuery.isEmpty {
-                        Section(state.windowScope == nil ? "Windows · \(state.frontmostApp)" : "Windows") {
+                        TrunklineSection(state.windowScope == nil ? "Windows · \(state.frontmostApp)" : "Windows") {
                             if state.windowScope != nil {
                                 Picker("App", selection: Binding<Int32?>(get: { controls.selectedWindowAppPID }, set: { controls.selectWindowApplication($0) })) {
                                     Text("Active app: \(state.frontmostApp)").tag(Int32?.none)
@@ -120,7 +120,7 @@ struct ControlsView: View {
                                 Button("Load windows", systemImage: "arrow.clockwise") { controls.refresh() }
                             }
                         }
-                        Section("Sound") {
+                        TrunklineSection("Sound") {
                             if let outputs = state.audioOutputs {
                                 if outputs.isEmpty {
                                     Text("No audio outputs connected").foregroundStyle(.secondary)
@@ -146,13 +146,13 @@ struct ControlsView: View {
                                 media(.previousTrack); Spacer(); media(.playPause); Spacer(); media(.nextTrack)
                             }.padding(.horizontal)
                         }
-                        Section("Displays") {
+                        TrunklineSection("Displays") {
                             ForEach(state.displays) { display in
                                 LabeledContent(display.name, value: "\(display.width) × \(display.height)")
                             }
                             HStack { media(.brightnessDown); Spacer(); media(.brightnessUp) }
                         }
-                        Section("Mac") {
+                        TrunklineSection("Mac") {
                             if let awake = state.keepAwake {
                                 Picker("Keep awake", selection: Binding(get: { awake.mode }, set: { controls.perform(.keepAwake($0)) })) {
                                     Text("Automatic").tag(AwakeMode.off)
@@ -185,16 +185,16 @@ struct ControlsView: View {
                         }
                     }
                 } else if controls.refreshError == nil {
-                    Section { HStack(spacing: 12) { GlacierLoadingIndicator(); Text("Loading controls…") } }
+                    TrunklineSection { HStack(spacing: 12) { GlacierLoadingIndicator(); Text("Loading controls…") } }
                 }
                 if let error = controls.refreshError {
-                    Section {
+                    TrunklineSection {
                         Label(error, systemImage: "wifi.exclamationmark").foregroundStyle(.secondary)
                         Button(controls.isRefreshing ? "Refreshing…" : "Try again") { controls.refresh() }
                             .disabled(controls.isRefreshing)
                     }
                 }
-                if let error = controls.error { Section { Text(error).foregroundStyle(.orange); Button("Refresh") { controls.error = nil; controls.refresh() } } }
+                if let error = controls.error { TrunklineSection { Text(error).foregroundStyle(.orange); Button("Refresh") { controls.error = nil; controls.refresh() } } }
             }
             .disabled(controls.pending != nil)
             .nativeWorkspaceStyle()
@@ -238,13 +238,11 @@ struct ControlsView: View {
                         Text(action.title).lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .font(.subheadline)
+                    .trunklineActionLabel()
                     .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.roundedRectangle)
-                .tint(.primary)
+                .trunklineActionStyle()
                 .disabled(!enabled)
             }
         }
@@ -326,9 +324,10 @@ private struct AppLauncherView: View {
                             if selectedBundle == app.bundleID && controls.pending != nil { ProgressView() }
                         }.frame(minHeight: 44)
                     }.disabled(controls.pending != nil)
+                        .trunklineRowSeparators()
                 }
             }
-            if let error = controls.error { Section { Text(error).foregroundStyle(.orange) } }
+            if let error = controls.error { TrunklineSection { Text(error).foregroundStyle(.orange) } }
         }
         .nativeWorkspaceStyle()
         .frame(maxWidth: 780).frame(maxWidth: .infinity)

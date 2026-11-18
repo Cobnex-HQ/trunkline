@@ -43,6 +43,8 @@ final class TerminalSessionsController: UITableViewController {
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "session")
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 76
+        tableView.separatorInsetReference = .fromCellEdges
+        tableView.separatorInset = UIEdgeInsets(top: 0, left: 20, bottom: 0, right: 20)
         tableView.alwaysBounceVertical = true
         tableView.tintColor = UIColor(named: "AccentColor")
         tableView.backgroundColor = .workspaceBackground

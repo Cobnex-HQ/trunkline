@@ -12,7 +12,8 @@ struct NativeWorkspaceStyle: ViewModifier {
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .background(Color.workspaceBackground)
-            .environment(\.defaultMinListRowHeight, 44)
+            .environment(\.defaultMinListRowHeight, TrunklineControls.minimumHeight)
+            .buttonBorderShape(TrunklineControls.buttonShape)
             .listSectionSpacing(16)
             .navigationBarTitleDisplayMode(.inline)
     }
@@ -63,7 +64,7 @@ struct ContentSizedActionLayout: Layout {
         let width = min(idealWidth, available)
         let columns = min(3, max(1, Int(((available + spacing) / (width + spacing) + 0.001).rounded(.down))))
         let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }.max() ?? 0
-        return (columns, CGSize(width: width, height: max(44, height)))
+        return (columns, CGSize(width: width, height: max(TrunklineControls.minimumHeight, height)))
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

@@ -3,6 +3,98 @@ import TrunklineCore
 #endif
 import SwiftUI
 
+/// Shared metrics for SwiftUI actions and UIKit terminal keys.
+enum TrunklineControls {
+    static let shape = Capsule()
+    static let uiKitCornerStyle = UIButton.Configuration.CornerStyle.capsule
+    static let minimumHeight: CGFloat = 44
+    static let labelMinimumHeight: CGFloat = 32
+    static let actionRowInsets = EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20)
+    static var buttonShape: ButtonBorderShape { .capsule }
+}
+
+private struct TrunklineActionStyle: ViewModifier {
+    var prominent: Bool
+
+    func body(content: Content) -> some View {
+        Group {
+            if prominent {
+                content.buttonStyle(.borderedProminent)
+                    .tint(Color("ControlSurface")).foregroundStyle(.white)
+            } else {
+                content.buttonStyle(.bordered).tint(.primary)
+            }
+        }
+        .buttonBorderShape(TrunklineControls.buttonShape)
+        .controlSize(.regular)
+    }
+}
+
+extension View {
+    func trunklineActionStyle(prominent: Bool = false) -> some View {
+        modifier(TrunklineActionStyle(prominent: prominent))
+    }
+
+    func trunklineActionLabel() -> some View {
+        self.font(.subheadline).lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minHeight: TrunklineControls.labelMinimumHeight)
+    }
+}
+
+/// Native sections with one separator edge, regardless of a row's icon or label style.
+struct TrunklineSection<Content: View, Header: View, Footer: View>: View {
+    let content: Content
+    let header: Header
+    let footer: Footer
+
+    init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Header,
+         @ViewBuilder footer: () -> Footer) {
+        self.content = content()
+        self.header = header()
+        self.footer = footer()
+    }
+
+    var body: some View {
+        Section {
+            Group { content }.trunklineRowSeparators()
+        } header: { header } footer: { footer }
+    }
+}
+
+extension TrunklineSection where Header == EmptyView, Footer == EmptyView {
+    init(@ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { EmptyView() }, footer: { EmptyView() })
+    }
+}
+
+extension TrunklineSection where Header == Text, Footer == EmptyView {
+    init(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { Text(title) }, footer: { EmptyView() })
+    }
+    init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { Text(title) }, footer: { EmptyView() })
+    }
+}
+
+extension TrunklineSection where Footer == EmptyView {
+    init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Header) {
+        self.init(content: content, header: header, footer: { EmptyView() })
+    }
+}
+
+extension TrunklineSection where Header == EmptyView {
+    init(@ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) {
+        self.init(content: content, header: { EmptyView() }, footer: footer)
+    }
+}
+
+extension View {
+    func trunklineRowSeparators() -> some View {
+        alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+    }
+}
+
 struct TrunklineBrandHeader: View {
     let title: String
     let subtitle: String

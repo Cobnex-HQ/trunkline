@@ -19,14 +19,14 @@ struct ConnectedTabs: View {
         if UIDevice.current.userInterfaceIdiom == .pad {
             NavigationSplitView(columnVisibility: $columns) {
                 List(selection: Binding<WorkspaceSection?>(get: { selection }, set: { if let value = $0 { selection = value } })) {
-                    Section("Workspace") {
+                    TrunklineSection("Workspace") {
                         ForEach([WorkspaceSection.desktop, .controls, .terminal, .files]) { section in
                             NavigationLink(value: section) {
                                 Label(section.title, systemImage: section.systemImage)
                             }
                         }
                     }
-                    Section("Connected Mac") {
+                    TrunklineSection("Connected Mac") {
                         connectionStatus
                         MacSwitchMenu(model: model)
                     }

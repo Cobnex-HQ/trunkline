@@ -191,6 +191,8 @@ final class UIReviewScreenshots: XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed,
                            "Sidebar must not cover the controls after rotation")
             let frames = names.map { app.buttons[$0].firstMatch.frame }
+            XCTAssertEqual(frames[0].minY, frames[1].minY, accuracy: 1,
+                           "Standard text should fit at least two actions per row on these full-screen devices")
             for frame in frames {
                 XCTAssertGreaterThanOrEqual(frame.height, 44)
                 XCTAssertEqual(frame.width, frames[0].width, accuracy: 1)

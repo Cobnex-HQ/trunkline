@@ -122,7 +122,7 @@ struct SessionDetail: View {
         .sheet(isPresented: $showPaste) {
             NavigationStack {
                 Form {
-                    Section {
+                    TrunklineSection {
                         TextEditor(text: $paste).font(.system(.body, design: .monospaced)).frame(minHeight: verticalSizeClass == .compact ? 96 : 180)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Text to paste")
                         PasteButton(payloadType: String.self) { paste = $0.joined(separator: "\n") }
@@ -158,7 +158,7 @@ private struct TerminalKeyStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.tint)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .background(.quaternary, in: TrunklineControls.shape)
             .opacity(configuration.isPressed ? 0.55 : 1)
     }
 }

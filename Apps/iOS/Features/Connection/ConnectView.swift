@@ -25,7 +25,7 @@ struct ConnectView: View {
             ScrollViewReader { proxy in
                 Form {
                     if !compactConnection {
-                        Section { brandHeader }
+                        TrunklineSection { brandHeader }
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: verticalSizeClass == .compact ? 0 : 8, leading: 0,
                                                      bottom: verticalSizeClass == .compact ? 0 : 8, trailing: 0))
@@ -33,24 +33,20 @@ struct ConnectView: View {
 
                     if pairing == nil {
                         if !model.savedMacs.isEmpty {
-                            Section { macSelector }
+                            TrunklineSection { macSelector }
                         }
-                        Section {
+                        TrunklineSection {
                             Button { scanner = true } label: {
-                                Label("Scan QR code", systemImage: "qrcode.viewfinder").lineLimit(nil)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.horizontal, 12)
-                                    .frame(minHeight: 32)
+                                Label("Scan QR code", systemImage: "qrcode.viewfinder")
+                                    .trunklineActionLabel()
                             }
-                            .buttonStyle(.borderedProminent)
-                            .buttonBorderShape(.roundedRectangle)
-                            .tint(Color("ControlSurface"))
-                            .foregroundStyle(.white)
+                            .trunklineActionStyle(prominent: true)
+                            .frame(maxWidth: .infinity, alignment: .center)
                         }
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
+                        .listRowInsets(TrunklineControls.actionRowInsets)
 
-                        Section {
+                        TrunklineSection {
                             DisclosureGroup("Pairing link", isExpanded: $manual) {
                                 TextField("trunkline://…", text: $model.pairingText, axis: .vertical)
                                     .textInputAutocapitalization(.never)
@@ -66,7 +62,7 @@ struct ConnectView: View {
                             Text("You can also paste a pairing link from your Mac.")
                         }
                     } else {
-                        Section {
+                        TrunklineSection {
                             macSelector
                             if model.hasAwayAccess {
                                 Picker("Route", selection: $model.useAwayAccess) {
@@ -78,57 +74,29 @@ struct ConnectView: View {
                             }
                         }
 
-                        if savedUnlock {
-                            Section { Toggle("Save passcode", isOn: $model.rememberPasscode) }
-                        } else {
-                            Section {
+                        TrunklineSection {
+                            if !savedUnlock {
                                 ConnectionPasscodeField(text: $model.passcode, focused: $passcodeFocused,
                                                         enabled: !connecting, submit: connect)
                                     .id("connection-passcode")
-                                if !connecting {
-                                    Toggle("Save passcode", isOn: $model.rememberPasscode)
-                                }
-                            } footer: {
-                                if !connecting && verticalSizeClass != .compact {
-                                    Text("Use the connection passcode shown on your Mac.")
-                                }
                             }
-                        }
-
-                        Section {
+                            if !connecting {
+                                Toggle("Save passcode", isOn: $model.rememberPasscode)
+                            }
                             if connecting {
                                 connectionProgress
                             } else {
-                                Button {
-                                    if savedUnlock { Task { await model.unlockSaved() } }
-                                    else { connect() }
-                                } label: {
-                                    Text(savedUnlock ? "Unlock and connect" : "Connect").lineLimit(nil)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .padding(.horizontal, 12)
-                                        .frame(minHeight: 32)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .buttonBorderShape(.roundedRectangle)
-                                .tint(Color("ControlSurface"))
-                                .foregroundStyle(.white)
-                                .disabled(!savedUnlock && model.passcode.isEmpty)
-                                if savedUnlock {
-                                    Button("Use passcode instead") {
-                                        usePasscode = true
-                                        passcodeFocused = true
-                                    }
-                                    .frame(minHeight: 44)
-                                }
+                                connectionActions
+                            }
+                        } footer: {
+                            if !savedUnlock && !connecting && verticalSizeClass != .compact {
+                                Text("Use the connection passcode shown on your Mac.")
                             }
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets())
                     }
 
                     if let error = model.error {
-                        Section {
+                        TrunklineSection {
                             Label { Text(error).textSelection(.enabled) } icon: {
                                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
                             }
@@ -251,6 +219,30 @@ struct ConnectView: View {
         .disabled(connecting)
     }
 
+    private var connectionActions: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Button {
+                if savedUnlock { Task { await model.unlockSaved() } }
+                else { connect() }
+            } label: {
+                Text(savedUnlock ? "Unlock and connect" : "Connect")
+                    .trunklineActionLabel()
+            }
+            .trunklineActionStyle(prominent: true)
+            .disabled(!savedUnlock && model.passcode.isEmpty)
+            if savedUnlock {
+                Button("Use passcode instead") {
+                    usePasscode = true
+                    passcodeFocused = true
+                }
+                .buttonStyle(.borderless)
+                .frame(minHeight: TrunklineControls.minimumHeight)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.vertical, 4)
+    }
+
     private var connectionProgress: some View {
         let layout = textSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
@@ -264,9 +256,10 @@ struct ConnectView: View {
             }
             .accessibilityElement(children: .combine)
             if !textSize.isAccessibilitySize { Spacer(minLength: 12) }
-            Button("Cancel") { model.disconnect() }
-                .buttonStyle(.bordered)
-                .frame(minHeight: 44)
+            Button { model.disconnect() } label: {
+                Text("Cancel").trunklineActionLabel()
+            }
+            .trunklineActionStyle()
         }
         .frame(minHeight: 50)
     }
@@ -290,8 +283,8 @@ private struct ConnectionSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Appearance") { AppearancePicker() }
-                Section("Support") {
+                TrunklineSection("Appearance") { AppearancePicker() }
+                TrunklineSection("Support") {
                     Button("Help and Mac setup", systemImage: "questionmark.circle") { help = true }
                     Link("Privacy notice", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/PRIVACY.md")!)
                     Link("Open-source acknowledgments", destination: URL(string: "https://github.com/Cobnex-HQ/trunkline/blob/main/docs/THIRD_PARTY.md")!)
