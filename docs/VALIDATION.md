@@ -7,7 +7,7 @@ Development results are recorded below by date. See [test instructions](TESTING.
 - Reproduced missing resize signals with the production Mac PTY launcher. Its foreground process group was unset. The new bundled launcher acquires the controlling terminal before starting the shell.
 - Verified resize signals reach a foreground job across portrait and landscape sizes. The test also verifies that inherited automation settings cannot disable terminal colour. Shell exit, foreground cleanup and remote-power checks pass.
 - Started Claude in a temporary configuration without an account or model request. It emitted colour, responded to menu navigation and redrew after resizing in both directions.
-- The signed Mac build and bundled-runtime verification pass. Installation requires restarting the host and ending its current terminal session, so deployment remains pending approval.
+- The signed Mac build and bundled-runtime verification pass. After approval, the update was installed at the same path and the existing Claude session ended cleanly. Installed binaries match the verified build. Sharing restarted with an active listener and a system-awake assertion.
 - Existing keyboard, scroll-dismissal and rotation checks pass on iPhone and iPad simulators. The separately reported app-navigation failure has not been reproduced on physical devices. Simulator results do not close that hardware check.
 
 ## Native UI and sharing controls — 2026-11-17
