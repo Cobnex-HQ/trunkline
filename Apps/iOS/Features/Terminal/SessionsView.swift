@@ -75,15 +75,15 @@ struct SessionDetail: View {
                 .background(.black)
             if !keyboard { ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Button("Scroll history up", systemImage: "chevron.up") { input.terminal?.pageHistory(up: true) }
-                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-                    Button("Scroll history down", systemImage: "chevron.down") { input.terminal?.pageHistory(up: false) }
-                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-                    Button("Latest output", systemImage: "arrow.down.to.line") { input.terminal?.jumpToLatest() }
-                        .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
                     if session.isRunning && !model.isEndingTerminal(session.id) {
-                    ForEach(TerminalShortcut.allCases, id: \.self) { terminalKey($0) }
+                        ForEach(TerminalShortcut.allCases, id: \.self) { terminalKey($0) }
                     }
+                    Menu {
+                        Button("Page up", systemImage: "chevron.up") { input.terminal?.pageHistory(up: true) }
+                        Button("Page down", systemImage: "chevron.down") { input.terminal?.pageHistory(up: false) }
+                        Button("Latest output", systemImage: "arrow.down.to.line") { input.terminal?.jumpToLatest() }
+                    } label: { Label("History", systemImage: "clock.arrow.circlepath").padding(.horizontal, 8).frame(minHeight: 44) }
+                    .buttonStyle(TerminalKeyStyle())
                 }.padding(.horizontal).padding(.vertical, 4)
             }.background(.bar) }
         }

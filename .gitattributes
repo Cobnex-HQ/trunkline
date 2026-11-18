@@ -10,3 +10,6 @@
 Vendor/** -text
 # Preserve supplemental upstream licence texts byte for byte.
 Licenses/** -text -whitespace
+
+# Recorded terminal bytes must keep their control sequences and line endings.
+Tests/Fixtures/ClaudeStartup/*.bin binary

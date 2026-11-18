@@ -1,3 +1,5 @@
+// Modified for Trunkline on 2026-11-18. Keep native selection during non-mouse terminal output.
+// Based on SwiftTerm b1262db5b6bea699a8260a8c66999436c508ca56. Original MIT notices retained.
 //
 //  AppleTerminalView.swift
 //
@@ -1570,8 +1572,9 @@ extension TerminalView {
     func feedPrepare()
     {
         search.invalidate()
-        // Preserve manual selection while output is streaming when mouse reporting is disabled.
-        if allowMouseReporting {
+        // Native selection belongs to the user unless a terminal app has
+        // explicitly requested mouse reporting and the user allows it.
+        if allowMouseReporting && terminal.mouseMode != .off {
             selection.active = false
         }
         startDisplayUpdates()

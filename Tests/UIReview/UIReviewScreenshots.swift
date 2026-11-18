@@ -107,7 +107,7 @@ final class UIReviewScreenshots: XCTestCase {
         for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
             XCUIDevice.shared.orientation = direction
             let terminal = app.textViews["Mac terminal session"]
-            let history = app.buttons["Scroll history up"].firstMatch
+            let history = app.buttons["Up arrow"].firstMatch
             XCTAssertTrue(terminal.waitForExistence(timeout: 8))
             XCTAssertTrue(history.exists)
             XCTAssertGreaterThanOrEqual(terminal.frame.width, app.frame.width * 0.85)
@@ -133,7 +133,7 @@ final class UIReviewScreenshots: XCTestCase {
         add(resting)
         // The terminal shortcut row must not sit underneath the floating tab bar.
         let tabs = app.tabBars.firstMatch
-        let history = app.buttons["Scroll history up"].firstMatch
+        let history = app.buttons["Up arrow"].firstMatch
         if tabs.exists {
             XCTAssertFalse(history.frame.intersects(tabs.frame), "Terminal shortcuts overlap workspace navigation")
         }
@@ -143,7 +143,7 @@ final class UIReviewScreenshots: XCTestCase {
             XCUIDevice.shared.orientation = direction
             XCTAssertTrue(app.buttons["terminal.key.Hide keyboard"].waitForExistence(timeout: 8))
             let terminal = app.textViews["Mac terminal session"]
-            let escape = app.buttons["terminal.key.Escape"]
+            let escape = app.buttons["terminal.key.Up arrow"]
             XCTAssertTrue(terminal.exists)
             XCTAssertGreaterThanOrEqual(terminal.frame.width, app.frame.width * 0.85,
                                         "Sidebar crowds the terminal beside a full-width keyboard")
@@ -189,7 +189,7 @@ final class UIReviewScreenshots: XCTestCase {
             terminal.tap()
             let dismiss = app.buttons["terminal.key.Hide keyboard"]
             XCTAssertTrue(dismiss.waitForExistence(timeout: 8), "Touching the terminal must open the keyboard")
-            let escape = app.buttons["terminal.key.Escape"]
+            let escape = app.buttons["terminal.key.Up arrow"]
             let key = app.keys["q"].firstMatch
             XCTAssertTrue(key.waitForExistence(timeout: 8))
             XCTAssertLessThanOrEqual(escape.frame.maxY, key.frame.minY)
@@ -199,7 +199,7 @@ final class UIReviewScreenshots: XCTestCase {
             app.typeText("test")
             dismiss.tap()
             XCTAssertTrue(app.buttons["Show keyboard"].waitForExistence(timeout: 5))
-            XCTAssertTrue(app.buttons["Scroll history up"].firstMatch.isHittable)
+            XCTAssertTrue(app.buttons["Up arrow"].firstMatch.isHittable)
             XCTAssertGreaterThan(terminal.frame.height, app.frame.height * 0.55)
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             shot.name = "terminal-touch-dismiss-\(direction.rawValue)"
@@ -225,7 +225,7 @@ final class UIReviewScreenshots: XCTestCase {
         if !app.buttons["terminal.key.Hide keyboard"].exists { terminal.tap() }
         for direction: UIDeviceOrientation in [.landscapeLeft, .portrait] {
             XCUIDevice.shared.orientation = direction
-            let escape = app.buttons["terminal.key.Escape"]
+            let escape = app.buttons["terminal.key.Up arrow"]
             XCTAssertTrue(escape.waitForExistence(timeout: 8))
             XCTAssertTrue(escape.isHittable)
             let key = app.keys["q"].firstMatch
@@ -236,6 +236,34 @@ final class UIReviewScreenshots: XCTestCase {
             shot.name = "terminal-history-keyboard-\(direction.rawValue)"
             shot.lifetime = .keepAlways
             add(shot)
+        }
+    }
+
+    func testTerminalMenuControlsStayVisible() {
+        launch("terminal")
+        app.staticTexts["Project · build"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Session controls"].waitForExistence(timeout: 8))
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft] {
+            XCUIDevice.shared.orientation = direction
+            for label in ["Up arrow", "Down arrow", "Enter"] {
+                let key = app.buttons[label].firstMatch
+                XCTAssertTrue(key.isHittable, "\(label) must be visible before opening the keyboard")
+                XCTAssertTrue(app.frame.contains(key.frame))
+                key.tap()
+            }
+            tap("Show keyboard")
+            for label in ["Up arrow", "Down arrow", "Enter"] {
+                let key = app.buttons["terminal.key.\(label)"]
+                XCTAssertTrue(key.waitForExistence(timeout: 8))
+                XCTAssertTrue(key.isHittable, "\(label) must be visible without scrolling the accessory")
+                XCTAssertTrue(app.frame.contains(key.frame))
+                key.tap()
+            }
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "terminal-menu-controls-\(direction.rawValue)"
+            shot.lifetime = .keepAlways
+            add(shot)
+            app.buttons["terminal.key.Hide keyboard"].tap()
         }
     }
 

@@ -5,9 +5,10 @@ import SwiftUI
 import SwiftTerm
 
 enum TerminalShortcut: CaseIterable {
-    case escape, tab, controlC, controlD, up, down, left, right
+    case up, down, enter, escape, tab, controlC, controlD, left, right
     var title: String {
         switch self {
+        case .enter: "↵"
         case .escape: "Esc"
         case .tab: "Tab"
         case .controlC: "⌃C"
@@ -20,6 +21,7 @@ enum TerminalShortcut: CaseIterable {
     }
     var accessibilityLabel: String {
         switch self {
+        case .enter: "Enter"
         case .escape: "Escape"
         case .tab: "Tab"
         case .controlC: "Control C"
@@ -33,6 +35,7 @@ enum TerminalShortcut: CaseIterable {
     func bytes(applicationCursor: Bool) -> [UInt8] {
         let prefix: UInt8 = applicationCursor ? 79 : 91
         return switch self {
+        case .enter: [13]
         case .escape: [27]
         case .tab: [9]
         case .controlC: [3]
@@ -216,6 +219,16 @@ final class TerminalInputAccessory: UIInputView {
         scroll.delaysContentTouches = true
         scroll.isAccessibilityElement = false
         addSubview(scroll)
+        for (symbol, label, normal, application) in [
+            ("arrow.up", "Up arrow", EscapeSequences.moveUpNormal, EscapeSequences.moveUpApp),
+            ("arrow.down", "Down arrow", EscapeSequences.moveDownNormal, EscapeSequences.moveDownApp)
+        ] {
+            let button = addKey(nil, symbol: symbol, label: label) { terminal in
+                terminal.send(terminal.getTerminal().applicationCursor ? application : normal)
+            }
+            button.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(repeatArrow(_:))))
+        }
+        addKey(nil, symbol: "return", label: "Enter") { $0.insertText("\n") }
         addKey("Esc", label: "Escape") { $0.send([27]) }
         control = makeButton("Ctrl", label: "Control") { [weak self] in
             guard let self, let terminal = self.terminal else { return }
@@ -226,8 +239,6 @@ final class TerminalInputAccessory: UIInputView {
         addKey("Tab", label: "Tab") { $0.send([9]) }
         for (symbol, label, normal, application) in [
             ("arrow.left", "Left arrow", EscapeSequences.moveLeftNormal, EscapeSequences.moveLeftApp),
-            ("arrow.down", "Down arrow", EscapeSequences.moveDownNormal, EscapeSequences.moveDownApp),
-            ("arrow.up", "Up arrow", EscapeSequences.moveUpNormal, EscapeSequences.moveUpApp),
             ("arrow.right", "Right arrow", EscapeSequences.moveRightNormal, EscapeSequences.moveRightApp)
         ] {
             let button = addKey(nil, symbol: symbol, label: label) { terminal in

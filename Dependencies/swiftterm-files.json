@@ -1,7 +1,7 @@
 {
   "LICENSE": "1b17fa27394e89b3dc62d60c81ebe7e5554639b2382e4b057b4277ed202bfd77",
   "Package.swift": "c9b47c67ac6aa35297cfd3ed275966d6b76c05613c883bdf0a16019c27edb19c",
-  "Sources/SwiftTerm/Apple/AppleTerminalView.swift": "ef8c6d4ae6fd57e99ed2635d635c24a2ade1a9da582ef6905b062c49018af75a",
+  "Sources/SwiftTerm/Apple/AppleTerminalView.swift": "680c4a5a9bd5e3309054ce689e5a524a3f4cbd2dbe5fd6b3203246bbd6f4378c",
   "Sources/SwiftTerm/Apple/BlockElementRenderer.swift": "066db5f97efc5f9b3fc0515db75834213335eb7bd4b8975b9e4482e1e8879554",
   "Sources/SwiftTerm/Apple/BoxDrawingRenderer.swift": "0c821be920622fbfd98646e0939eab7489c24c32ce573b393222580077be8fab",
   "Sources/SwiftTerm/Apple/CaretView.swift": "15b752388d4bc6d69844b845b04231d02e57afc2a7aa31333d92e5f3852c7c7c",

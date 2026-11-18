@@ -30,7 +30,7 @@ Both Moonlight licence files retain the exact App Store exception. It does not e
 
 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), MIT. Tag `v1.11.2`, commit `b1262db5b6bea699a8260a8c66999436c508ca56`. Original notices, including xterm.js/SourceLair/Christopher Jeffrey credits, remain in `Vendor/SwiftTerm/LICENSE` and `Apps/iOS/Resources/SwiftTerm-LICENSE.txt`.
 
-The local `iOSAccessoryView.swift` adaptation changes its toggle icon and accessibility labels without changing input behaviour. Trunkline presents its own accessory through `TerminalSurface.swift`, using SwiftTerm’s public input/modifier API and escape sequences. The upstream accessory remains in the framework.
+The local `iOSAccessoryView.swift` adaptation changes its toggle icon and accessibility labels without changing input behaviour. Trunkline presents its own accessory through `TerminalSurface.swift`, using SwiftTerm’s public input/modifier API and escape sequences. The upstream accessory remains in the framework. Trunkline also preserves native selection in `AppleTerminalView.swift` unless the running program has requested mouse input. The modified file has an adaptation header and a pinned checksum.
 
 `Engines/Terminal/TrunklineKittyGraphics.swift` replaces the pinned graphics parser at build time. On iOS it rejects file, temporary-file and shared-memory transports. A remote terminal may send inline graphics, but cannot use this protocol to read or delete companion files. Original notices remain intact.
 

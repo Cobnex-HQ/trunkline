@@ -128,7 +128,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
      * If a client application has not indicated any use for mouse events, then this setting
      * does not do anything, and selection and panning are still processed.
      */
-    public var allowMouseReporting: Bool = true
+    public var allowMouseReporting: Bool = true {
+        didSet {
+            guard terminal != nil else { return }
+            mouseModeChanged(source: terminal)
+        }
+    }
 
     /**
      * If set, this turns Option-letter keystrokes into an escape + keystroke combination
@@ -1123,8 +1128,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     }
 
     open func linefeed(source: Terminal) {
-        // Preserve manual selection while output is streaming when mouse reporting is disabled.
-        if allowMouseReporting {
+        // Mouse-capable terminal apps own selection only while they actually
+        // request mouse input. Ordinary output must not erase native selection.
+        if allowMouseReporting && source.mouseMode != .off {
             selection.selectNone()
             disableSelectionPanGesture()
         }
@@ -1739,7 +1745,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     }
 
     open func mouseModeChanged(source: Terminal) {
-        if source.mouseMode != .off {
+        if allowMouseReporting && source.mouseMode != .off {
             enableMousePanGesture()
         } else {
             disableMousePanGesture()

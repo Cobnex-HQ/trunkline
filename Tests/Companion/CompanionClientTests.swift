@@ -75,6 +75,101 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertNil(controller.tableView(controller.tableView, trailingSwipeActionsConfigurationForRowAt: IndexPath(row: 1, section: 0)), "A stopping session must not offer another kill action")
     }
 
+    func testTerminalSelectionSurvivesOutputWhenApplicationDoesNotRequestMouse() {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        terminal.feed(text: "Choose an option\r\n1. Continue\r\n2. Cancel\r\n")
+        terminal.selectAll()
+        XCTAssertTrue(terminal.selectionActive)
+        terminal.feed(text: "Status updated\r\n")
+        XCTAssertTrue(terminal.selectionActive, "Incoming output must not erase the user's text selection")
+        XCTAssertTrue(terminal.getSelection()?.contains("Continue") == true)
+    }
+
+    func testDisablingTerminalMouseReportingRestoresNativeGestureOwnership() {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        func extraPans() -> Int {
+            (terminal.gestureRecognizers ?? []).filter { $0 is UIPanGestureRecognizer && $0 !== terminal.panGestureRecognizer }.count
+        }
+        let original = extraPans()
+        terminal.feed(text: "\u{1b}[?1002h\u{1b}[?1006h")
+        XCTAssertGreaterThan(extraPans(), original)
+        terminal.allowMouseReporting = false
+        XCTAssertEqual(extraPans(), original, "Disabled mouse reporting must release gestures back to scrolling and selection")
+        terminal.allowMouseReporting = true
+        XCTAssertGreaterThan(extraPans(), original, "Re-enabling mouse reporting must restore app interaction")
+        terminal.feed(text: "\u{1b}[?1002l")
+        XCTAssertEqual(extraPans(), original)
+    }
+
+    func testTerminalMenuKeysAreVisibleAndSendNavigationWithoutKeyboard() throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        let recorder = TerminalInputRecorder()
+        terminal.terminalDelegate = recorder
+        let accessory = try XCTUnwrap(terminal.inputAccessoryView)
+        let scroll = try XCTUnwrap(accessory.subviews.compactMap { $0 as? UIScrollView }.first)
+        accessory.frame = CGRect(x: 0, y: 0, width: 320, height: 52)
+        accessory.setNeedsLayout()
+        accessory.layoutIfNeeded()
+        for (label, expected) in [("Up arrow", [UInt8(27), 91, 65]), ("Down arrow", [27, 91, 66]), ("Enter", [13])] {
+            let button = try XCTUnwrap(scroll.subviews.compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == label })
+            XCTAssertTrue(scroll.bounds.contains(button.frame), "\(label) must be fully visible without scrolling")
+            recorder.bytes = []
+            button.sendActions(for: .touchUpInside)
+            XCTAssertEqual(recorder.bytes, expected)
+            XCTAssertFalse(terminal.isFirstResponder, "Menu controls must also work with the keyboard hidden")
+        }
+    }
+
+    func testRecordedClaudeStartupRedrawAndMenuInputAcrossRotation() throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        let recorder = TerminalInputRecorder()
+        terminal.terminalDelegate = recorder
+        let input = TerminalShortcutInput()
+        input.terminal = terminal
+        func resize(columns: Int, rows: Int) {
+            terminal.resize(cols: columns, rows: rows)
+            terminal.frame = terminal.getOptimalFrameSize()
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+        }
+        func replay(_ name: String) throws {
+            let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "bin", subdirectory: "ClaudeStartup"))
+            let bytes = Array(try Data(contentsOf: url))
+            // Network delivery may split escape sequences at any byte.
+            for start in stride(from: 0, to: bytes.count, by: 7) {
+                terminal.feed(byteArray: bytes[start..<min(start + 7, bytes.count)])
+            }
+        }
+        func screen() -> String {
+            // Cursor-positioning escape sequences leave empty cells rather than
+            // literal spaces. Normalize those cells as the renderer displays them.
+            String(decoding: terminal.getTerminal().getBufferAsData(), as: UTF8.self)
+                .replacingOccurrences(of: "\0", with: " ")
+        }
+        resize(columns: 46, rows: 24)
+        try replay("initial")
+        XCTAssertTrue(screen().contains("Choose the text style"), "Startup screen: \(screen())")
+        recorder.bytes = []
+        input.send(.down)
+        XCTAssertEqual(recorder.bytes, [27, 91, 66])
+        try replay("down")
+        XCTAssertTrue(screen().split(separator: "\n").contains { $0.contains("❯") && $0.contains("Light mode") }, "Down screen: \(screen())")
+        input.send(.up)
+        try replay("up")
+        XCTAssertTrue(screen().split(separator: "\n").contains { $0.contains("❯") && $0.contains("Dark mode") }, "Up screen: \(screen())")
+        resize(columns: 100, rows: 10)
+        try replay("landscape")
+        input.send(.down)
+        try replay("landscape-down")
+        recorder.bytes = []
+        input.send(.enter)
+        XCTAssertEqual(recorder.bytes, [13])
+        try replay("enter")
+        XCTAssertTrue(screen().contains("Press Enter to continue"), "Claude must advance to the next screen: \(screen())")
+        XCTAssertTrue(terminal.isUserInteractionEnabled)
+        XCTAssertGreaterThanOrEqual(terminal.contentOffset.y, 0)
+    }
+
     func testHistoryPagingStaysLocalExceptInFullScreenTerminalApps() async throws {
         let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
         let recorder = TerminalInputRecorder()

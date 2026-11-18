@@ -38,6 +38,8 @@ Scripts/verify-companion.sh SIMULATOR_UDID
 Scripts/verify-viewport.sh SIMULATOR_UDID
 ```
 
+The companion suite replays isolated Claude startup captures from `Tests/Fixtures/ClaudeStartup`. It checks redraws, menu keys and rotation without installing Claude or using an account.
+
 `Scripts/verify.sh` runs native integration checks and builds both apps. Build the Mac host first to prepare its runtime. Input-ordering checks cover rapid taps, drag endpoints and coalescing. `Scripts/verify-desktop-pointer.sh` checks engine targets and delayed cursor snapshots. Read the window and device scripts’ usage before running them.
 
 Use an available device ID for `SIMULATOR_UDID`. Test results are in Derived Data under `Logs/Test/*.xcresult`. Set `TRUNKLINE_SIM_DERIVED_DATA=.build/ios-simulator` to reuse the build above. Otherwise the scripts use separate defaults. Open results in Xcode and redact diagnostics before sharing.
