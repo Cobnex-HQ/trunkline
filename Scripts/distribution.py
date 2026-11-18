@@ -94,7 +94,8 @@ def verify_mac(app):
     arches = set(run('lipo', '-archs', str(main)).split())
     helper = app / 'Contents/Helpers/TrunklineRemote'
     supervisor = app / 'Contents/Helpers/TrunklineDesktopSupervisor'
-    for binary in (helper, supervisor):
+    terminal = app / 'Contents/MacOS/TrunklineTerminalLauncher'
+    for binary in (helper, supervisor, terminal):
         if not binary.is_file(): raise ValueError(f'Missing bundled helper: {binary.name}')
         if not arches <= set(run('lipo', '-archs', str(binary)).split()):
             raise ValueError(f'{binary.name} does not support all host architectures')

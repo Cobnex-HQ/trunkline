@@ -14,7 +14,7 @@ Run commands from the repository root with the development prerequisites install
 | Companion connection, keyboard or workspace | `Scripts/verify-companion.sh SIMULATOR_UDID` after setup |
 | UIKit viewport and touch mapping | `Scripts/verify-viewport.sh SIMULATOR_UDID` after setup, followed by hardware acceptance |
 | Client movement/button ordering | `Scripts/verify-input-ordering.sh` after dependency preparation |
-| Terminal exit and remote keep-awake | `sh Scripts/verify-terminal-power.sh` on macOS, then companion tests |
+| Terminal launch, resize, exit and remote keep-awake | `sh Scripts/verify-terminal-power.sh` on macOS, then companion tests |
 | Mac sharing confirmations and connection lifecycle | `sh Scripts/verify-mac-client.sh` on macOS |
 | Native layouts, sheets and orientation | [Simulator screenshot review](../Tests/UIReview/README.md), plus MacClientTests for Mac window captures |
 | iOS release archive | `python3 Scripts/audit-ios.py --archive PATH.xcarchive --report .build/ios-preflight.json` |
@@ -39,6 +39,8 @@ Scripts/verify-viewport.sh SIMULATOR_UDID
 ```
 
 The companion suite replays isolated Claude startup captures from `Tests/Fixtures/ClaudeStartup`. It checks redraws, menu keys and rotation without installing Claude or using an account.
+
+The native terminal check starts the production PTY launcher with colour-disabled parent settings. It verifies the child environment and real resize signals in both directions. The same suite checks shell exit and foreground-process cleanup. It uses temporary sessions and does not stop user sessions.
 
 `Scripts/verify.sh` runs native integration checks and builds both apps. Build the Mac host first to prepare its runtime. Input-ordering checks cover rapid taps, drag endpoints and coalescing. `Scripts/verify-desktop-pointer.sh` checks engine targets and delayed cursor snapshots. Read the window and device scripts’ usage before running them.
 

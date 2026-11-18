@@ -5,8 +5,12 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <poll.h>
+#include <stdlib.h>
+#include <limits.h>
 int main(void) {
-    int fd = -1; pid_t pid = MPStartTerminal("/private/tmp", &fd);
+    char launcher[PATH_MAX];
+    if (!realpath(".build/terminal-power/TrunklineTerminalLauncher", launcher)) { perror("PTY launcher"); return 1; }
+    int fd = -1; pid_t pid = MPStartTerminal("/private/tmp", launcher, &fd);
     if (pid < 0) { perror("PTY spawn"); return 1; }
     MPResizeTerminal(fd, 100, 40);
     // No user environment or prompt output is printed by this test.

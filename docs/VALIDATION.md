@@ -2,6 +2,14 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Terminal resize and colour environment — 2026-11-18
+
+- Reproduced missing resize signals with the production Mac PTY launcher. Its foreground process group was unset. The new bundled launcher acquires the controlling terminal before starting the shell.
+- Verified resize signals reach a foreground job across portrait and landscape sizes. The test also verifies that inherited automation settings cannot disable terminal colour. Shell exit, foreground cleanup and remote-power checks pass.
+- Started Claude in a temporary configuration without an account or model request. It emitted colour, responded to menu navigation and redrew after resizing in both directions.
+- The signed Mac build and bundled-runtime verification pass. Installation requires restarting the host and ending its current terminal session, so deployment remains pending approval.
+- Existing keyboard, scroll-dismissal and rotation checks pass on iPhone and iPad simulators. The separately reported app-navigation failure has not been reproduced on physical devices. Simulator results do not close that hardware check.
+
 ## Native UI and sharing controls — 2026-11-17
 
 - Selected a native grouped workspace after comparing three layout proposals. Updated connection, desktop, controls, terminal, files, help and Mac settings while retaining the Glacier theme and system appearance option.

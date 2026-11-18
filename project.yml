@@ -280,6 +280,9 @@ targets:
         INFOPLIST_KEY_NSAppleEventsUsageDescription: Allow confirmed restart, shutdown
           and logout requests from your paired iPhone or iPad.
     postBuildScripts:
+    - name: Bundle terminal launcher
+      script: /bin/sh "$SRCROOT/Scripts/bundle-terminal.sh"
+      basedOnDependencyAnalysis: false
     - name: Bundle third-party notices
       script: python3 "$SRCROOT/Scripts/bundle-notices.py"
       basedOnDependencyAnalysis: false
@@ -290,6 +293,8 @@ targets:
       script: '"$SRCROOT/Scripts/bundle-desktop.sh"'
       basedOnDependencyAnalysis: false
     dependencies:
+    - target: TerminalLauncher
+      link: false
     - target: DesktopSupervisor
       link: false
     - package: TrunklineCore
@@ -393,6 +398,19 @@ targets:
         - $(SRCROOT)/Vendor/MoonlightCore/enet/include
         - $(SRCROOT)/Vendor/MoonlightCore/nanors
         - $(SRCROOT)/Vendor/MoonlightCore/nanors/deps/obl
+        SKIP_INSTALL: true
+  TerminalLauncher:
+    type: tool
+    platform: macOS
+    sources:
+    - Services/TerminalLauncher
+    settings:
+      base:
+        PRODUCT_NAME: TrunklineTerminalLauncher
+        PRODUCT_BUNDLE_IDENTIFIER: com.trunkline.terminal-launcher
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        ENABLE_HARDENED_RUNTIME: true
+        GCC_C_LANGUAGE_STANDARD: gnu11
         SKIP_INSTALL: true
   DesktopSupervisor:
     type: tool

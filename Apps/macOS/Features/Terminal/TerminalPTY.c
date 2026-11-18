@@ -12,7 +12,16 @@
 #include <sys/proc.h>
 extern char **environ;
 
-pid_t MPStartTerminal(const char *directory, int *masterFD) {
+static int inheritedTerminalSetting(const char *entry) {
+    const char *keys[] = { "TERM=", "COLORTERM=", "TERM_PROGRAM=", "TERM_PROGRAM_VERSION=",
+        "NO_COLOR=", "FORCE_COLOR=", "CLICOLOR=", "CLICOLOR_FORCE=", "CI=", "COLUMNS=", "LINES=" };
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+        if (strncmp(entry, keys[i], strlen(keys[i])) == 0) return 1;
+    }
+    return 0;
+}
+
+pid_t MPStartTerminal(const char *directory, const char *launcherPath, int *masterFD) {
     int master = -1, slave = -1;
     char name[1024];
     struct winsize size = { .ws_row = 30, .ws_col = 80 };
@@ -22,7 +31,7 @@ pid_t MPStartTerminal(const char *directory, int *masterFD) {
     posix_spawnattr_t attributes;
     posix_spawn_file_actions_init(&actions);
     posix_spawnattr_init(&attributes);
-    // The new session opens its slave after setsid, acquiring a controlling TTY.
+    // The launcher explicitly acquires this slave as its controlling terminal.
     posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK);
     sigset_t defaults, mask;
     sigfillset(&defaults); sigemptyset(&mask);
@@ -43,16 +52,21 @@ pid_t MPStartTerminal(const char *directory, int *masterFD) {
     size_t count = 0;
     while (environ[count]) count++;
     char **environment = calloc(count + 4, sizeof(char *));
-    if (!environment) { close(master); close(slave); return -1; }
+    if (!environment) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attributes);
+        close(master); close(slave); return -1;
+    }
     size_t index = 0;
     for (size_t i = 0; i < count; i++) {
-        if (strncmp(environ[i], "TERM=", 5) && strncmp(environ[i], "COLORTERM=", 10)) environment[index++] = environ[i];
+        if (!inheritedTerminalSetting(environ[i])) environment[index++] = environ[i];
     }
     environment[index++] = "TERM=xterm-256color";
     environment[index++] = "COLORTERM=truecolor";
-    char *arguments[] = { "/bin/zsh", "-l", NULL };
+    environment[index++] = "TERM_PROGRAM=Trunkline";
+    char *arguments[] = { (char *)launcherPath, NULL };
     pid_t pid = -1;
-    int error = posix_spawn(&pid, "/bin/zsh", &actions, &attributes, arguments, environment);
+    int error = posix_spawn(&pid, launcherPath, &actions, &attributes, arguments, environment);
     free(environment);
     posix_spawn_file_actions_destroy(&actions); posix_spawnattr_destroy(&attributes);
     close(slave);

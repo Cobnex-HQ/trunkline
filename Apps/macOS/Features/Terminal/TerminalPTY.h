@@ -1,7 +1,7 @@
 #ifndef MACPHONE_TERMINAL_PTY_H
 #define MACPHONE_TERMINAL_PTY_H
 #include <sys/types.h>
-pid_t MPStartTerminal(const char *directory, int *masterFD);
+pid_t MPStartTerminal(const char *directory, const char *launcherPath, int *masterFD);
 int MPResizeTerminal(int masterFD, unsigned short columns, unsigned short rows);
 /* Signal only live members of this terminal's POSIX session. Excludes the
  * session leader from the returned count. The caller must not reap the leader

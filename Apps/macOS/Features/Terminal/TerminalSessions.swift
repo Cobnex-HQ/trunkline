@@ -31,7 +31,11 @@ final class TerminalSession {
     init(kind: TerminalKind, title: String) throws {
         self.kind = kind; self.title = title
         var descriptor: Int32 = -1
-        let spawned = NSHomeDirectory().withCString { MPStartTerminal($0, &descriptor) }
+        guard let executable = Bundle.main.executableURL else { throw SessionError.spawnFailed }
+        let launcher = executable.deletingLastPathComponent().appendingPathComponent("TrunklineTerminalLauncher")
+        let spawned = NSHomeDirectory().withCString { directory in
+            launcher.path.withCString { MPStartTerminal(directory, $0, &descriptor) }
+        }
         guard spawned > 0 else { throw SessionError.spawnFailed }
         fd = descriptor; pid = spawned
         reader = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: .main)

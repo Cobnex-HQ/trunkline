@@ -139,7 +139,7 @@ final class UIReviewScreenshots: XCTestCase {
         }
         XCTAssertFalse(tabs.exists, "An open terminal should use the full workspace without a second navigation bar")
         tap("Show keyboard")
-        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait, .landscapeRight, .portrait] {
             XCUIDevice.shared.orientation = direction
             XCTAssertTrue(app.buttons["terminal.key.Hide keyboard"].waitForExistence(timeout: 8))
             let terminal = app.textViews["Mac terminal session"]
@@ -158,6 +158,13 @@ final class UIReviewScreenshots: XCTestCase {
                                      "Shortcut keys fell underneath the software keyboard")
             XCTAssertTrue(escape.isHittable)
             XCTAssertTrue(app.buttons["Session controls"].isHittable)
+            XCTAssertTrue(app.frame.contains(app.buttons["Session controls"].frame),
+                          "Session navigation moved outside the rotated window")
+            XCTAssertTrue(app.frame.contains(escape.frame),
+                          "Shortcut navigation moved outside the rotated window")
+            XCTAssertGreaterThanOrEqual(terminal.frame.minY,
+                                        app.buttons["Session controls"].frame.maxY - 1,
+                                        "Session navigation covers terminal content")
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.name = "connected-terminal-\(direction.rawValue)"
             screenshot.lifetime = .keepAlways

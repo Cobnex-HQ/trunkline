@@ -2,6 +2,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 mkdir -p .build/terminal-power
+python3 Tests/Native/terminal_environment_check.py
 clang -c Apps/macOS/Features/Terminal/TerminalPTY.c -o .build/terminal-power/pty.o
 swiftc -parse-as-library -import-objc-header Apps/macOS/Features/Terminal/TerminalPTY.h \
   Packages/Core/Sources/TrunklineCore/*.swift Apps/macOS/Features/Terminal/TerminalSessions.swift \

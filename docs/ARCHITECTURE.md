@@ -21,6 +21,8 @@ Both apps use `TrunklineCore` for messages, connections, security and shared pol
 
 `Engines/Desktop` pins the upstream revision, patches and dependencies. Preparation rejects an unexpected checkout. The build compiles, audits and stages a runtime for the current Mac architecture, then bundles it with the C supervisor.
 
+`Services/TerminalLauncher` starts each shell in its own POSIX session with a controlling terminal. It runs beside the host executable and acquires the PTY before replacing itself with the login shell. This lets foreground programs receive resize signals and use job control without forking the multithreaded Mac app. Terminal sessions advertise true colour and discard inherited automation colour flags. Shell configuration can still override those defaults.
+
 ## Where to start reading
 
 All paths below are relative to the repository root. Each row identifies entry points, not every supporting file.

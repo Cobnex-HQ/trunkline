@@ -4,12 +4,26 @@ import tempfile
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
+import plistlib
 
 spec = importlib.util.spec_from_file_location('distribution', Path(__file__).parents[2] / 'Scripts' / 'distribution.py')
 distribution = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(distribution)
 
 class DistributionTests(unittest.TestCase):
+    def test_host_package_requires_terminal_launcher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / 'Trunkline.app'
+            contents = app / 'Contents'
+            (contents / 'Helpers').mkdir(parents=True)
+            (contents / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': 'Trunkline'}))
+            for name in ['TrunklineRemote', 'TrunklineDesktopSupervisor']:
+                (contents / 'Helpers' / name).touch()
+            with patch.object(distribution, 'run', return_value='arm64'):
+                with self.assertRaisesRegex(ValueError, 'Missing bundled helper: TrunklineTerminalLauncher'):
+                    distribution.verify_mac(app)
+
     def test_export_excludes_private_state_and_builds_but_keeps_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
