@@ -186,12 +186,17 @@ struct DesktopView: View {
                         desktop.display = controls.snapshot?.desktopDisplays?.selectedDisplay?.geometry ?? model.desktopDisplay
                         desktop.openDesktop()
                     } label: {
-                        HStack {
-                            Label(desktop.pin == nil ? "Open desktop" : "Pairing…", systemImage: "arrow.up.right.square")
-                                .foregroundStyle(.white)
-                            Spacer()
-                            if desktop.busy { GlacierLoadingIndicator(size: 28) }
-                        }.frame(maxWidth: .infinity, minHeight: 32)
+                        HStack(spacing: 10) {
+                            if desktop.busy {
+                                ProgressView().controlSize(.small).tint(.white)
+                                    .accessibilityHidden(true)
+                                Text(desktop.pin == nil ? "Connecting…" : "Pairing…")
+                            } else {
+                                Label("Open desktop", systemImage: "arrow.up.right.square")
+                            }
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 32)
                     }.buttonStyle(.borderedProminent).tint(Color("ControlSurface")).disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
                     if desktop.busy { Button("Cancel", role: .cancel) { desktop.cancelPreparation() } }
                 }

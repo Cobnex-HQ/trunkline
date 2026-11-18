@@ -22,28 +22,17 @@ public struct AppearancePicker: View {
     }
 }
 
-/// A small, compositor-animated fold. No frame timer or parent-state updates.
-/// Animation exists only while the loading view is visible and the scene is active.
+/// Native indeterminate progress with a stable footprint for existing callers.
 public struct GlacierLoadingIndicator: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
     private let size: CGFloat
     public init(size: CGFloat = 32) { self.size = size }
-    private var mark: some View {
-        Image("ElephantMark").resizable().renderingMode(.template).scaledToFit()
-            .foregroundStyle(Color("AccentColor")).frame(width: size, height: size)
-    }
     public var body: some View {
-        Group {
-            if reduceMotion || scenePhase != .active { mark }
-            else {
-                mark.phaseAnimator([0, 1, 2]) { content, phase in
-                    content.rotation3DEffect(.degrees(phase == 1 ? -18 : 0), axis: (x: 0, y: 1, z: 0))
-                        .rotationEffect(.degrees(phase == 1 ? -4 : 0))
-                        .offset(y: phase == 1 ? -2 : 0)
-                } animation: { phase in .easeInOut(duration: phase == 2 ? 0.75 : 0.6) }
-            }
-        }.accessibilityLabel("Loading").accessibilityAddTraits(.updatesFrequently)
+        ProgressView()
+            .progressViewStyle(.circular)
+            .controlSize(.regular)
+            .tint(.secondary)
+            .frame(width: size, height: size)
+            .accessibilityLabel("Loading")
     }
 }
 #endif

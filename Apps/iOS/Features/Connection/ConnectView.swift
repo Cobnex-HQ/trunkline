@@ -251,11 +251,20 @@ struct ConnectView: View {
         let layout = textSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout(spacing: 12))
         return layout {
-            GlacierLoadingIndicator(size: 24)
-            Text(model.connectionStatus).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-            if !textSize.isAccessibilitySize { Spacer() }
-            Button("Cancel") { model.disconnect() }.frame(minHeight: 44)
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.regular).tint(.secondary)
+                    .accessibilityHidden(true)
+                Text(model.connectionStatus)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            if !textSize.isAccessibilitySize { Spacer(minLength: 12) }
+            Button("Cancel") { model.disconnect() }
+                .buttonStyle(.bordered)
+                .frame(minHeight: 44)
         }
+        .frame(minHeight: 50)
     }
 
     private func revealPasscode(using proxy: ScrollViewProxy) {
