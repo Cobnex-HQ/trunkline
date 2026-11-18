@@ -232,6 +232,43 @@ final class UIReviewScreenshots: XCTestCase {
         XCTAssertTrue(target.isHittable, "Could not reveal \(target.label)")
     }
 
+    func testConnectionLayoutRotation() {
+        for section in ["connection", "connection-saved"] {
+            launch(section)
+            let action = app.buttons[section == "connection" ? "Scan QR code" : "Connect"]
+            for direction: UIDeviceOrientation in [.portrait, .landscapeLeft] {
+                XCUIDevice.shared.orientation = direction
+                XCTAssertTrue(action.waitForExistence(timeout: 5))
+                if !action.isHittable { reveal(action) }
+                let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    action.isHittable && self.app.frame.contains(action.frame)
+                }, object: nil)
+                XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed,
+                               "Primary connection action is outside the visible screen: \(action.frame), app: \(app.frame)")
+                let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+                screenshot.name = "\(section)-rotation-\(direction.rawValue)"
+                screenshot.lifetime = .keepAlways
+                add(screenshot)
+            }
+        }
+    }
+
+    func testConnectionSettingsAndMacSelection() {
+        launch("connection-saved")
+        XCTAssertFalse(app.buttons["Help and Mac setup"].exists)
+        tap("Settings")
+        capture("connection-settings", ready: app.navigationBars["Settings"])
+        tap("Help and Mac setup")
+        XCTAssertTrue(app.navigationBars["Help and privacy"].waitForExistence(timeout: 5))
+        app.navigationBars["Help and privacy"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        app.navigationBars["Settings"].buttons["Done"].tap()
+        tap("Connection options")
+        tap("MacBook Pro")
+        XCTAssertEqual(app.buttons["Connection options"].value as? String, "MacBook Pro")
+        capture("connection-selected-mac", ready: app.buttons["Connect"])
+    }
+
     func testConnectionScreens() {
         launch("connection")
         capture("connection", ready: app.navigationBars["Trunkline"])
