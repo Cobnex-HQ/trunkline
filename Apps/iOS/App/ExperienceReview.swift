@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor
 struct ExperienceReview: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var textSize
     @StateObject private var model: ConnectionModel
     private let section = ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_SECTION"] ?? "desktop"
     init() {
@@ -70,6 +71,7 @@ struct ExperienceReview: View {
             state.windowPage = MacWindowPage(nextCursor: pageCursor, totalCount: 5)
             _ = model.controls.handle(.controls(state))
         }
+        let delayedRefresh = ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_DELAY_REFRESH"] == "1"
         model.controls.send = { [weak controls = model.controls] message in
             if case let .control(request) = message, case let .desktopDisplay(id) = request.action,
                var snapshot = controls?.snapshot, let displays = snapshot.desktopDisplays?.displays {
@@ -88,7 +90,12 @@ struct ExperienceReview: View {
                     snapshot.windows = expanded ? previewWindows : Array(previewWindows.prefix(3))
                     snapshot.windowPage = MacWindowPage(nextCursor: expanded ? nil : pageCursor, totalCount: 5)
                 }
-                _ = controls?.handle(.controls(snapshot))
+                if delayedRefresh && controls?.isUserRefreshing == true {
+                    Task { @MainActor [weak controls, snapshot] in
+                        try? await Task.sleep(for: .seconds(4))
+                        _ = controls?.handle(.controls(snapshot))
+                    }
+                } else { _ = controls?.handle(.controls(snapshot)) }
             }
         }
         model.sessions = [TerminalSessionInfo(id: UUID(), title: "Project · build", kind: .shell, isRunning: true),
@@ -123,13 +130,19 @@ struct ExperienceReview: View {
         model.files.send = { [weak files = model.files] message in
             if case let .listFiles(path) = message {
                 let children = path.isEmpty ? shownEntries : [RemoteFile(name: "Project notes.txt", path: "\(path)/Project notes.txt", isDirectory: false, size: 2048)]
-                _ = files?.handle(.fileList(path: path, entries: children))
+                if delayedRefresh {
+                    Task { @MainActor [weak files] in
+                        try? await Task.sleep(for: .seconds(4))
+                        _ = files?.handle(.fileList(path: path, entries: children))
+                    }
+                } else { _ = files?.handle(.fileList(path: path, entries: children)) }
             }
         }
         _model = StateObject(wrappedValue: model)
     }
     var body: some View {
         reviewContent
+            .dynamicTypeSize(ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_LARGE_TEXT"] == "1" ? .xxxLarge : textSize)
             .overlay(alignment: .topLeading) {
                 // Readiness must not cover a Back button or alter the layout under review.
                 Text("Preview").font(.system(size: 1)).foregroundStyle(.clear)

@@ -23,7 +23,7 @@ final class UIReviewScreenshots: XCTestCase {
     private func launch(_ section: String, extra: [String: String] = [:]) {
         app.terminate()
         app.launchEnvironment["TRUNKLINE_REVIEW_SECTION"] = section
-        for key in ["TRUNKLINE_REVIEW_EMPTY_TERMINALS", "TRUNKLINE_REVIEW_LOADING_TERMINALS", "TRUNKLINE_REVIEW_CREATING_TERMINAL", "TRUNKLINE_REVIEW_LEGACY_FILES"] {
+        for key in ["TRUNKLINE_REVIEW_EMPTY_TERMINALS", "TRUNKLINE_REVIEW_LOADING_TERMINALS", "TRUNKLINE_REVIEW_CREATING_TERMINAL", "TRUNKLINE_REVIEW_LEGACY_FILES", "TRUNKLINE_REVIEW_DELAY_REFRESH", "TRUNKLINE_REVIEW_LARGE_TEXT"] {
             app.launchEnvironment[key] = extra[key] ?? "0"
         }
         app.launch()
@@ -177,7 +177,7 @@ final class UIReviewScreenshots: XCTestCase {
         XCTAssertTrue(field.isHittable)
         app.buttons["connection-passcode-visibility"].tap()
         XCTAssertTrue(secureField.exists)
-        app.buttons["Done"].tap()
+        XCTAssertFalse(app.buttons["Done"].exists, "The passcode keyboard must not add a floating Done button")
     }
 
     func testControlsRotation() {
@@ -202,6 +202,19 @@ final class UIReviewScreenshots: XCTestCase {
             screenshot.name = "controls-rotation-\(direction.rawValue)"
             screenshot.lifetime = .keepAlways
             add(screenshot)
+        }
+    }
+
+    func testButtonsWithLargerText() {
+        for (section, title) in [("connection-saved", "Connect"), ("controls", "Mission Control"), ("desktop", "Open desktop")] {
+            launch(section, extra: ["TRUNKLINE_REVIEW_LARGE_TEXT": "1"])
+            let action = app.buttons[title].firstMatch
+            XCTAssertTrue(action.waitForExistence(timeout: 8))
+            if !action.isHittable { reveal(action) }
+            XCTAssertTrue(action.isHittable)
+            XCTAssertGreaterThanOrEqual(action.frame.minX, 0)
+            XCTAssertLessThanOrEqual(action.frame.maxX, app.frame.maxX)
+            capture(section + "-larger-text", ready: action)
         }
     }
 
@@ -230,6 +243,28 @@ final class UIReviewScreenshots: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(target.isHittable, "Could not reveal \(target.label)")
+    }
+
+    func testRefreshKeepsVisibleRowsAndToolbarInPlace() {
+        for section in ["controls", "files"] {
+            launch(section, extra: ["TRUNKLINE_REVIEW_DELAY_REFRESH": "1"])
+            let refresh = app.buttons["Refresh"].firstMatch
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: refresh)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
+            let row = app.buttons[section == "controls" ? "Spotlight" : "Open Documents"].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 5))
+            let originalRow = row.frame
+            let originalButton = refresh.frame
+            refresh.tap()
+            let refreshing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Refreshing"), object: refresh)
+            XCTAssertEqual(XCTWaiter.wait(for: [refreshing], timeout: 3), .completed)
+            XCTAssertEqual(row.frame.minY, originalRow.minY, accuracy: 1)
+            XCTAssertEqual(refresh.frame.width, originalButton.width, accuracy: 1)
+            capture("\(section)-refreshing", ready: refresh)
+            let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: refresh)
+            XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 8), .completed)
+            XCTAssertEqual(row.frame.minY, originalRow.minY, accuracy: 1)
+        }
     }
 
     func testConnectionLayoutRotation() {

@@ -14,7 +14,7 @@ struct SessionsView: View {
             TerminalSessionsList(model: model)
             .nativeWorkspaceStyle()
             .frame(maxWidth: 840).frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.workspaceBackground)
             .navigationTitle("Terminal")
             .toolbar {
                 if model.hasLoadedTerminals {

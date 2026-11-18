@@ -71,7 +71,7 @@ final class DesktopSession: ObservableObject {
         }
     }
     func refresh() {
-        guard !busy, !closed, !presenting, !address.isEmpty else { return }; busy = true; hostReady = false; error = nil
+        guard !busy, !closed, !presenting, !address.isEmpty else { return }; busy = true; error = nil
         let id = armDeadline(discoveryTimeout, message: "Desktop didn’t respond. Check that Desktop is running on your Mac, then retry.")
         let engine = self.engine
         let certificate = SecretStore.read(certificateKey)
@@ -80,7 +80,7 @@ final class DesktopSession: ObservableObject {
             Task { @MainActor in
                 guard let self, let engine, !self.closed, self.engine === engine, self.operationID == id else { return }
                 self.stopDeadline(); self.busy = false
-                if let error { self.error = error; self.openRequested = false; return }
+                if let error { self.hostReady = false; self.error = error; self.openRequested = false; return }
                 #if DEBUG
                 if self.address.hasPrefix("127.0.0.1:") { print("TRUNKLINE_REMOTE desktop_host_ready"); fflush(stdout) }
                 #endif
@@ -178,27 +178,34 @@ struct DesktopView: View {
                             }.font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
-                        if let latency = model.roundTripMS {
-                            Text("\(latency) ms").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        }
+                        ZStack(alignment: .trailing) {
+                            Text(model.roundTripMS.map { "\($0) ms" } ?? "")
+                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                .opacity(desktop.busy ? 0 : 1)
+                                .accessibilityHidden(desktop.busy)
+                            Button("Cancel", role: .cancel) { desktop.cancelPreparation() }
+                                .buttonStyle(.borderless)
+                                .opacity(desktop.busy ? 1 : 0)
+                                .allowsHitTesting(desktop.busy)
+                                .accessibilityHidden(!desktop.busy)
+                        }.frame(width: 64, height: 44)
                     }.padding(.vertical, 4)
                     Button {
                         desktop.display = controls.snapshot?.desktopDisplays?.selectedDisplay?.geometry ?? model.desktopDisplay
                         desktop.openDesktop()
                     } label: {
-                        HStack(spacing: 10) {
-                            if desktop.busy {
+                        Label("Open desktop", systemImage: "arrow.up.right.square").lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(.white)
+                            .padding(.trailing, 28)
+                            .frame(minHeight: 32)
+                            .overlay(alignment: .trailing) {
                                 ProgressView().controlSize(.small).tint(.white)
+                                    .frame(width: 20)
+                                    .opacity(desktop.busy ? 1 : 0)
                                     .accessibilityHidden(true)
-                                Text(desktop.pin == nil ? "Connecting…" : "Pairing…")
-                            } else {
-                                Label("Open desktop", systemImage: "arrow.up.right.square")
                             }
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 32)
                     }.buttonStyle(.borderedProminent).tint(Color("ControlSurface")).disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
-                    if desktop.busy { Button("Cancel", role: .cancel) { desktop.cancelPreparation() } }
                 }
                 if let error = desktop.error {
                     Section { Text(error).foregroundStyle(.orange); Button("Retry") { desktop.openDesktop() }.disabled(desktop.busy) }
@@ -217,7 +224,7 @@ struct DesktopView: View {
             }
             .nativeWorkspaceStyle()
             .frame(maxWidth: 780).frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.workspaceBackground)
             .navigationTitle("Desktop")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { MacSwitchMenu(model: model) }

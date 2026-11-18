@@ -13,9 +13,7 @@ struct ControlsView: View {
     @State private var clipboard = false
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
-    @ScaledMetric(relativeTo: .caption) private var quickActionHeight: CGFloat = 64
-    @ScaledMetric(relativeTo: .body) private var quickActionIconSize: CGFloat = 24
-    @ScaledMetric(relativeTo: .caption) private var quickActionTitleHeight: CGFloat = 36
+    @ScaledMetric(relativeTo: .subheadline) private var quickActionIconSize: CGFloat = 20
     @ObservedObject var files: ClientFiles
     var dismissible = false
     @Environment(\.dismiss) private var dismiss
@@ -41,12 +39,7 @@ struct ControlsView: View {
                                     }.disabled(!state.accessibility)
                                 }
                             } else {
-                                ViewThatFits(in: .horizontal) {
-                                    quickActions(columns: 6, enabled: state.accessibility)
-                                    quickActions(columns: 3, enabled: state.accessibility)
-                                    quickActions(columns: 2, enabled: state.accessibility)
-                                    quickActions(columns: 1, enabled: state.accessibility)
-                                }.padding(.vertical, 8)
+                                quickActions(enabled: state.accessibility).padding(.vertical, 8)
                             }
                         }
                     }
@@ -206,15 +199,16 @@ struct ControlsView: View {
             .disabled(controls.pending != nil)
             .nativeWorkspaceStyle()
             .frame(maxWidth: 780).frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.workspaceBackground)
             .navigationTitle("Controls")
             .searchable(text: $search, prompt: "Find a running app")
-            .refreshable { controls.refresh() }
+            .refreshable { await controls.refreshAndWait() }
             .toolbar {
                 if dismissible { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    if controls.pending != nil || controls.isRefreshing { ProgressView() }
-                    else { Button("Refresh", systemImage: "arrow.clockwise") { controls.refresh() } }
+                    RefreshButton(isRefreshing: controls.isUserRefreshing, isDisabled: controls.pending != nil) {
+                        controls.refresh()
+                    }
                 }
             }
             .task(id: scenePhase) {
@@ -234,33 +228,26 @@ struct ControlsView: View {
             .sheet(isPresented: $clipboard) { ClipboardView(files: files) }
         }
     }
-    private func quickActions(columns: Int, enabled: Bool) -> some View {
-        let minimum: CGFloat = 92
-        // All six actions stay laid out while ViewThatFits changes column count.
-        // Lazy cells can retain stale symbol placement after an orientation change.
-        return VStack(spacing: 8) {
-            ForEach(0..<(Self.quickActionControls.count / columns), id: \.self) { row in
-                HStack(spacing: 8) {
-                    ForEach(Array(Self.quickActionControls[(row * columns)..<((row + 1) * columns)])) { action in
-                        Button { controls.perform(.system(action)) } label: {
-                            VStack(alignment: .center, spacing: 6) {
-                                Image(systemName: action.symbol)
-                                    .font(.body)
-                                    .frame(width: quickActionIconSize, height: quickActionIconSize, alignment: .center)
-                                Text(action.title)
-                                    .font(.caption)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .frame(height: quickActionTitleHeight, alignment: .center)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: quickActionHeight, alignment: .center)
-                        }.buttonStyle(.bordered).buttonBorderShape(.roundedRectangle).tint(Color("AccentColor")).disabled(!enabled)
+    private func quickActions(enabled: Bool) -> some View {
+        ContentSizedActionLayout {
+            ForEach(Self.quickActionControls) { action in
+                Button { controls.perform(.system(action)) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: action.symbol)
+                            .frame(width: quickActionIconSize, height: quickActionIconSize)
+                        Text(action.title).lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .font(.subheadline)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.roundedRectangle)
+                .tint(.primary)
+                .disabled(!enabled)
             }
-        }.frame(minWidth: minimum * CGFloat(columns) + 8 * CGFloat(columns - 1))
+        }
     }
     @ViewBuilder private func soundOutputPicker(_ outputs: [MacAudioOutput]) -> some View {
         let selectedName = outputs.first(where: \.selected)?.name ?? "Select output"
@@ -345,7 +332,7 @@ private struct AppLauncherView: View {
         }
         .nativeWorkspaceStyle()
         .frame(maxWidth: 780).frame(maxWidth: .infinity)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Color.workspaceBackground)
         .navigationTitle("Open app")
         .searchable(text: $search, prompt: "Find an app")
         .onChange(of: controls.pending) { previous, current in

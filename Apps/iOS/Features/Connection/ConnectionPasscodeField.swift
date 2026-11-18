@@ -23,16 +23,11 @@ final class ConnectionPasscodeTextField: UITextField {
         reveal.addTarget(self, action: #selector(toggleVisibility), for: .touchUpInside)
         rightView = reveal; rightViewMode = .always
         updateRevealButton()
-        let toolbar = UIToolbar()
-        toolbar.autoresizingMask = [.flexibleWidth]
-        toolbar.items = [UIBarButtonItem(systemItem: .flexibleSpace),
-                         UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(dismissKeyboard))]
-        toolbar.sizeToFit(); inputAccessoryView = toolbar
+
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @objc private func toggleVisibility() { setPasswordVisible(isSecureTextEntry) }
-    @objc private func dismissKeyboard() { resignFirstResponder() }
 
     override func becomeFirstResponder() -> Bool {
         let wasFocused = isFirstResponder

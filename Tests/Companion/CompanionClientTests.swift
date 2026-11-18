@@ -2,6 +2,7 @@
 import TrunklineCore
 #endif
 import XCTest
+import Combine
 import Network
 import SwiftUI
 import UIKit
@@ -685,6 +686,83 @@ final class CompanionClientTests: XCTestCase {
         await fulfillment(of: [received, loaded, closed], timeout: 3)
         XCTAssertNil(engine.configuration(forApp: "1", title: "Desktop", width: 1280, height: 720, fps: 60,
             bitrate: 10000, directTouch: true, framePacing: false, stats: false), "Unpaired HTTP discovery cannot authorize a stream")
+    }
+
+    func testControlsPullRefreshWaitsForReplyAndBackgroundRefreshStaysQuiet() async {
+        let controls = ClientControls()
+        defer { controls.reset() }
+        let state = MacControlSnapshot(apps: [], windows: [], displays: [], volume: 0.5,
+                                       muted: false, accessibility: true, frontmostApp: "Finder")
+        _ = controls.handle(.controls(state))
+        controls.refresh(automatically: true)
+        XCTAssertTrue(controls.isRefreshing)
+        XCTAssertFalse(controls.isUserRefreshing, "Background polling must not flash the toolbar")
+        XCTAssertNotNil(controls.snapshot)
+        _ = controls.handle(.controls(state))
+        let finished = expectation(description: "Pull refresh completes after the reply")
+        var completed = false
+        let refresh = Task { @MainActor in
+            await controls.refreshAndWait()
+            completed = true
+            finished.fulfill()
+        }
+        defer { refresh.cancel() }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(controls.isUserRefreshing)
+        XCTAssertFalse(completed, "Pull-to-refresh must remain active while a response is pending")
+        _ = controls.handle(.controls(state))
+        await fulfillment(of: [finished], timeout: 1)
+        XCTAssertFalse(controls.isUserRefreshing)
+    }
+
+    func testDesktopRefreshKeepsReadyContentUntilAResponseArrives() async throws {
+        let engine = ControlledDesktopEngine()
+        let desktop = DesktopSession(engineFactory: { engine })
+        defer { desktop.close() }
+        let link = try PairingDetails(host: "127.0.0.1", port: 47995,
+                                      fingerprint: String(repeating: "c", count: 64)).link
+        desktop.open(pairingLink: link) { _ in }
+        engine.loads[0]([["id": "desktop", "name": "Desktop"]], nil)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(desktop.hostReady)
+        desktop.refresh()
+        XCTAssertTrue(desktop.busy)
+        XCTAssertTrue(desktop.hostReady, "Refresh must preserve the last ready presentation")
+        XCTAssertEqual(desktop.apps.map(\.id), ["desktop"])
+        engine.loads[1](nil, "The Mac is unavailable")
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertFalse(desktop.busy)
+        XCTAssertFalse(desktop.hostReady, "A failed refresh must invalidate stale readiness")
+        XCTAssertNotNil(desktop.error)
+    }
+
+    func testIdenticalFileRefreshDoesNotRepublishTheListing() {
+        let files = ClientFiles()
+        defer { files.reset() }
+        let entries = [RemoteFile(name: "Notes.txt", path: "Notes.txt", isDirectory: false, size: 5)]
+        files.list()
+        _ = files.handle(.fileList(path: "", entries: entries))
+        var updates = 0
+        let observation = files.$entries.dropFirst().sink { _ in updates += 1 }
+        defer { observation.cancel() }
+        files.list()
+        XCTAssertEqual(files.entries, entries)
+        _ = files.handle(.fileList(path: "", entries: entries))
+        XCTAssertEqual(updates, 0, "Unchanged replies must not reload existing file rows")
+        XCTAssertFalse(files.isLoading)
+    }
+
+    func testIdenticalTerminalRefreshPreservesItsEmptyStateView() throws {
+        let controller = TerminalSessionsController()
+        controller.update(sessions: [], pending: [], loaded: true)
+        let emptyState = try XCTUnwrap(controller.tableView.backgroundView)
+        controller.update(sessions: [], pending: [], loaded: true)
+        XCTAssertTrue(controller.tableView.backgroundView === emptyState,
+                      "Unchanged refreshes must preserve the visible empty state")
+        let session = TerminalSessionInfo(id: UUID(), title: "Build", kind: .shell, isRunning: true)
+        controller.update(sessions: [session], pending: [], loaded: true)
+        XCTAssertNil(controller.tableView.backgroundView,
+                     "Receiving a session must still replace the empty state")
     }
 
     func testDesktopTimeoutReleasesBusyStateAndRejectsLateDiscovery() async throws {

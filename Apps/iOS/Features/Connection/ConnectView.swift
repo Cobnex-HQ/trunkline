@@ -37,8 +37,10 @@ struct ConnectView: View {
                         }
                         Section {
                             Button { scanner = true } label: {
-                                Label("Scan QR code", systemImage: "qrcode.viewfinder")
-                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                Label("Scan QR code", systemImage: "qrcode.viewfinder").lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.horizontal, 12)
+                                    .frame(minHeight: 32)
                             }
                             .buttonStyle(.borderedProminent)
                             .buttonBorderShape(.roundedRectangle)
@@ -101,8 +103,10 @@ struct ConnectView: View {
                                     if savedUnlock { Task { await model.unlockSaved() } }
                                     else { connect() }
                                 } label: {
-                                    Text(savedUnlock ? "Unlock and connect" : "Connect")
-                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                    Text(savedUnlock ? "Unlock and connect" : "Connect").lineLimit(nil)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 12)
+                                        .frame(minHeight: 32)
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .buttonBorderShape(.roundedRectangle)
@@ -114,7 +118,7 @@ struct ConnectView: View {
                                         usePasscode = true
                                         passcodeFocused = true
                                     }
-                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .frame(minHeight: 44)
                                 }
                             }
                         }
@@ -150,7 +154,7 @@ struct ConnectView: View {
                 .contentMargins(.top, verticalSizeClass == .compact ? 0 : 16, for: .scrollContent)
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
-                .background(Color(uiColor: .systemGroupedBackground))
+                .background(Color.workspaceBackground)
                 .navigationTitle("Trunkline")
                 .toolbar {
                     if compactConnection {
@@ -165,7 +169,7 @@ struct ConnectView: View {
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Settings", systemImage: "gearshape") { settings = true }
+                        Button("Settings", systemImage: "gearshape") { settings = true }.tint(.primary)
                     }
                 }
                 .confirmationDialog("Forget this Mac?", isPresented: $forget, titleVisibility: .visible) {
@@ -231,13 +235,13 @@ struct ConnectView: View {
                     .frame(width: 32)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(pairing == nil ? "Choose a saved Mac" : model.name)
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Color(uiColor: .label))
                     Text(pairing == nil ? "Your Macs" : model.useAwayAccess ? "Away access" : "Local network")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
             }
             .padding(.vertical, verticalSizeClass == .compact ? 0 : 6)
             .contentShape(Rectangle())

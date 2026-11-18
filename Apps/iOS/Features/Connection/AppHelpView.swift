@@ -41,8 +41,9 @@ struct AppHelpView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .frame(maxWidth: 700).frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.workspaceBackground)
             .navigationTitle("Help and privacy")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

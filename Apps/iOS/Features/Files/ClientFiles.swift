@@ -13,6 +13,8 @@ final class ClientFiles: ObservableObject {
     @Published var entries: [RemoteFile] = []
     @Published var path = ""
     @Published var isLoading = false
+    @Published private(set) var hasLoadedListing = false
+    var isRefreshingListing: Bool { isLoading && hasLoadedListing && requestedPath == path }
     @Published var transferName: String?
     @Published var progress = 0.0
     @Published var downloadedURL: URL?
@@ -101,7 +103,10 @@ final class ClientFiles: ObservableObject {
             case let .fileList(path, entries):
                 guard requestedPath == path else { return true }
                 stopDeadline(); requestedPath = nil
-                self.path = path; self.entries = entries; isLoading = false
+                if self.path != path { self.path = path }
+                if self.entries != entries { self.entries = entries }
+                hasLoadedListing = true
+                isLoading = false
             case let .uploadReady(id):
                 guard var current = outgoing, current.id == nil, !diskPending else { throw IncomingTransfer.TransferError.invalidChunk }
                 current.id = id; outgoing = current; armDeadline(); sendUploadChunk()
@@ -218,7 +223,7 @@ final class ClientFiles: ObservableObject {
     }
     func reset() {
         features = []
-        clearTransfer(); entries = []; path = ""; isLoading = false; clipboardText = ""
+        clearTransfer(); entries = []; path = ""; isLoading = false; hasLoadedListing = false; clipboardText = ""
         requestedPath = nil; error = nil; clipboardError = nil
         downloadedURL = nil
         let worker = worker

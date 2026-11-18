@@ -32,6 +32,8 @@ struct ConnectedTabs: View {
                     }
                 }
                 .listStyle(.sidebar).font(.subheadline)
+                .scrollContentBackground(.hidden)
+                .background(Color.workspaceBackground)
                 .navigationTitle("Trunkline").navigationBarTitleDisplayMode(.inline)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
             } detail: {

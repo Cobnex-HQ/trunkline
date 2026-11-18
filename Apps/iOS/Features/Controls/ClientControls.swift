@@ -11,6 +11,7 @@ final class ClientControls: ObservableObject {
     @Published var error: String?
     @Published private(set) var refreshError: String?
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isUserRefreshing = false
     @Published private(set) var selectedWindowAppPID: Int32?
     var send: ((WireMessage) -> Void)?
     private var timeout: Task<Void, Never>?
@@ -34,19 +35,26 @@ final class ClientControls: ObservableObject {
     func refresh(automatically: Bool = false) {
         guard !isRefreshing else { return }
         if !automatically { expandedWindowList = false }
-        beginRefresh(preserveWindows: automatically && expandedWindowList)
+        beginRefresh(preserveWindows: automatically && expandedWindowList, automatically: automatically)
     }
     func loadMoreWindows() {
         guard !isRefreshing, hasCurrentWindowList, let cursor = snapshot?.windowPage?.nextCursor else { return }
         expandedWindowList = true
         beginRefresh(windowCursor: cursor)
     }
-    private func beginRefresh(windowCursor: UUID? = nil, preserveWindows: Bool = false) {
+    func refreshAndWait() async {
+        refresh()
+        for await refreshing in $isRefreshing.values {
+            if !refreshing || Task.isCancelled { return }
+        }
+    }
+    private func beginRefresh(windowCursor: UUID? = nil, preserveWindows: Bool = false, automatically: Bool = false) {
         let id = UUID(); refreshID = id; isRefreshing = true
+        isUserRefreshing = !automatically
         refreshTimeout = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
             guard let self, self.refreshID == id else { return }
-            self.isRefreshing = false; self.refreshTimeout = nil; self.refreshID = nil
+            self.isRefreshing = false; self.isUserRefreshing = false; self.refreshTimeout = nil; self.refreshID = nil
             self.refreshError = "The Mac isn’t responding. Try refreshing."
             if self.queuedWindowRefresh { self.queuedWindowRefresh = false; self.refresh() }
         }
@@ -101,7 +109,7 @@ final class ClientControls: ObservableObject {
             // A new host must correlate its replies. Old hosts omit both fields.
             if refreshID != nil, snapshot.requestID == nil, snapshot.windowScope != nil { return true }
             refreshTimeout?.cancel(); refreshTimeout = nil
-            isRefreshing = false; refreshError = nil; refreshID = nil
+            isRefreshing = false; isUserRefreshing = false; refreshError = nil; refreshID = nil
             if snapshot.windowScope == nil { selectedWindowAppPID = nil }
             if snapshot.windowPage == nil || self.snapshot?.windowScope?.application?.pid != snapshot.windowScope?.application?.pid {
                 expandedWindowList = false
@@ -123,7 +131,7 @@ final class ClientControls: ObservableObject {
     func reset() {
         timeout?.cancel(); timeout = nil
         refreshTimeout?.cancel(); refreshTimeout = nil
-        isRefreshing = false; refreshError = nil
+        isRefreshing = false; isUserRefreshing = false; refreshError = nil
         refreshID = nil; selectedWindowAppPID = nil; queuedWindowRefresh = false; expandedWindowList = false
         pending = nil; snapshot = nil; error = nil
     }

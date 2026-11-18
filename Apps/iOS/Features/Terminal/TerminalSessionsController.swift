@@ -33,6 +33,7 @@ final class TerminalSessionsController: UITableViewController {
     var onRefresh: (() -> Void)?
     private var sessions: [TerminalSessionInfo] = []
     private var pending: Set<UUID> = []
+    private var loaded: Bool?
     private var source: Source!
 
     init() { super.init(style: .insetGrouped) }
@@ -44,6 +45,7 @@ final class TerminalSessionsController: UITableViewController {
         tableView.estimatedRowHeight = 76
         tableView.alwaysBounceVertical = true
         tableView.tintColor = UIColor(named: "AccentColor")
+        tableView.backgroundColor = .workspaceBackground
         refreshControl = UIRefreshControl()
         refreshControl?.addTarget(self, action: #selector(refreshSessions), for: .valueChanged)
         source = Source(tableView: tableView) { [weak self] table, indexPath, id in
@@ -78,15 +80,23 @@ final class TerminalSessionsController: UITableViewController {
     func update(sessions: [TerminalSessionInfo], pending: Set<UUID>, loaded: Bool) {
         loadViewIfNeeded()
         refreshControl?.endRefreshing()
+        guard self.sessions != sessions || self.pending != pending || self.loaded != loaded else { return }
+        let previousSessions = Dictionary(uniqueKeysWithValues: self.sessions.map { ($0.id, $0) })
+        let previousPending = self.pending
         self.sessions = sessions
         self.pending = pending
+        self.loaded = loaded
         var snapshot = NSDiffableDataSourceSnapshot<Section, UUID>()
         let running = sessions.filter(\.isRunning)
         let ended = sessions.filter { !$0.isRunning }
         if !running.isEmpty { snapshot.appendSections([.running]); snapshot.appendItems(running.map(\.id), toSection: .running) }
         if !ended.isEmpty { snapshot.appendSections([.ended]); snapshot.appendItems(ended.map(\.id), toSection: .ended) }
         let previous = Set(source.snapshot().itemIdentifiers)
-        snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { previous.contains($0) })
+        let changed = sessions.filter {
+            previous.contains($0.id) &&
+                (previousSessions[$0.id] != $0 || previousPending.contains($0.id) != pending.contains($0.id))
+        }.map(\.id)
+        snapshot.reconfigureItems(changed)
         source.apply(snapshot, animatingDifferences: view.window != nil && !UIAccessibility.isReduceMotionEnabled)
         if sessions.isEmpty {
             let title = UILabel()

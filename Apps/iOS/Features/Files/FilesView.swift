@@ -73,7 +73,7 @@ struct FilesView: View {
                 }
                 Section {
                     if !files.path.isEmpty { Button("Parent folder", systemImage: "arrow.turn.up.left") { files.parent() }.disabled(files.isBusy) }
-                    if files.isLoading { HStack(spacing: 12) { GlacierLoadingIndicator(); Text("Loading folder…") } }
+                    if files.isLoading && !files.hasLoadedListing && files.entries.isEmpty { HStack(spacing: 12) { GlacierLoadingIndicator(); Text("Loading folder…") } }
                     else if files.entries.isEmpty {
                         ContentUnavailableView("No files here", systemImage: "folder", description: Text("Upload a file or select a shared folder on your Mac."))
                     } else if visibleFiles.isEmpty {
@@ -113,7 +113,8 @@ struct FilesView: View {
                                     } message: { Text(file.name) }
                             }
                         }
-                        .disabled(files.isBusy)
+                        .disabled(files.isBusy && !files.isRefreshingListing)
+                        .allowsHitTesting(!files.isBusy)
                         .contextMenu { if files.features.contains(.mutations) { fileActions(file) } }
                     }
                 } header: { Text(files.path.isEmpty ? "Shared folder" : files.path).textCase(nil) }
@@ -128,7 +129,7 @@ struct FilesView: View {
             }
             .nativeWorkspaceStyle()
             .frame(maxWidth: 840).frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.workspaceBackground)
             .navigationTitle("Files")
             .searchable(text: $search, prompt: "Search this folder")
             .onChange(of: files.entries, initial: true) { _, _ in updateListing() }
@@ -146,7 +147,11 @@ struct FilesView: View {
                     } label: { Image(systemName: "plus") }.accessibilityLabel("Add file or folder")
                         .disabled(files.isBusy || (!files.canUploadHere && !files.features.contains(.mutations)))
                 }
-                ToolbarItem(placement: .topBarLeading) { Button("Refresh", systemImage: "arrow.clockwise") { files.list(files.path) }.labelStyle(.iconOnly).disabled(files.isBusy) }
+                ToolbarItem(placement: .topBarLeading) {
+                    RefreshButton(isRefreshing: files.isLoading, isDisabled: files.isBusy && !files.isLoading) {
+                        files.list(files.path)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("Sort by", selection: $sortOrder) {

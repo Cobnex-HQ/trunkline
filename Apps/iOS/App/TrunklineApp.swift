@@ -109,7 +109,7 @@ struct ClipboardView: View {
             }
             .nativeWorkspaceStyle()
             .frame(maxWidth: 780).frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color.workspaceBackground)
             .navigationTitle("Clipboard")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
