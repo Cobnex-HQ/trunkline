@@ -31,9 +31,11 @@
 @interface PointerRecordingView : StreamView
 @property(nonatomic) CGPoint packetPoint;
 @property(nonatomic) CGSize packetSize;
+@property(nonatomic) NSUInteger pointerEvents;
 @end
 @implementation PointerRecordingView
 - (void)emitPointerX:(short)x y:(short)y width:(short)width height:(short)height {
+    self.pointerEvents += 1;
     self.packetPoint = CGPointMake(x, y);
     // The wire protocol transmits inclusive coordinate maxima (width/height minus one).
     self.packetSize = CGSizeMake(width - 1, height - 1);
@@ -82,6 +84,24 @@
 @end
 @implementation FixtureStreamTouchEvent
 - (NSSet<UITouch *> *)allTouches { return self.touchSet; }
+@end
+
+@interface AbsoluteTouchHandler (GestureFixture)
+- (void)emitMouseButtonAction:(char)action button:(int)button;
+- (void)onSingleTouchReady:(NSTimer *)timer;
+- (void)onLongPressStart:(NSTimer *)timer;
+@end
+@interface RecordingAbsoluteTouchHandler : AbsoluteTouchHandler
+@property(nonatomic, strong) NSMutableArray<NSArray<NSNumber *> *> *buttonEvents;
+@end
+@implementation RecordingAbsoluteTouchHandler
+- (instancetype)initWithView:(StreamView *)view {
+    if ((self = [super initWithView:view])) { _buttonEvents = [NSMutableArray new]; }
+    return self;
+}
+- (void)emitMouseButtonAction:(char)action button:(int)button {
+    [self.buttonEvents addObject:@[@(action), @(button)]];
+}
 @end
 
 @interface FixtureHardwareKey : UIKey
@@ -136,6 +156,81 @@
     XCTAssertGreaterThan([[saved valueForKey:@"uniqueId"] length], 0U);
 }
 
+- (void)testPinchDoesNotEmitPointerOrClickWhenFingersArriveSeparately {
+    PointerRecordingView *view = [[PointerRecordingView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
+    StreamConfiguration *config = [StreamConfiguration new]; config.width = 1000; config.height = 1000;
+    [view setupStreamView:nil interactionDelegate:nil config:config];
+    RecordingAbsoluteTouchHandler *handler = [[RecordingAbsoluteTouchHandler alloc] initWithView:view];
+    PositionedStreamTouch *first = [PositionedStreamTouch new]; first.targetView = view; first.point = CGPointMake(200, 200);
+    PositionedStreamTouch *second = [PositionedStreamTouch new]; second.targetView = view; second.point = CGPointMake(700, 700);
+    FixtureStreamTouchEvent *event = [FixtureStreamTouchEvent new];
+    event.touchSet = [NSSet setWithObject:first];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    XCTAssertEqual(view.pointerEvents, 0U, @"The first finger may still be the start of a pinch");
+    first.point = CGPointMake(205, 205);
+    [handler touchesMoved:event.touchSet withEvent:event];
+    event.touchSet = [NSSet setWithObjects:first, second, nil];
+    [handler touchesBegan:[NSSet setWithObject:second] withEvent:event];
+    [handler touchesMoved:event.touchSet withEvent:event];
+    [handler touchesCancelled:event.touchSet withEvent:event];
+    // A late lift or move from the remaining finger must not turn back into input.
+    event.touchSet = [NSSet setWithObject:first];
+    [handler touchesMoved:event.touchSet withEvent:event];
+    [handler touchesEnded:event.touchSet withEvent:event];
+    XCTAssertEqual(view.pointerEvents, 0U);
+    XCTAssertEqual(handler.buttonEvents.count, 0U);
+}
+
+- (void)testDirectTouchTapDragAndLongPressKeepDistinctButtonSequences {
+    PointerRecordingView *view = [[PointerRecordingView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
+    StreamConfiguration *config = [StreamConfiguration new]; config.width = 1000; config.height = 1000;
+    [view setupStreamView:nil interactionDelegate:nil config:config];
+    RecordingAbsoluteTouchHandler *handler = [[RecordingAbsoluteTouchHandler alloc] initWithView:view];
+    PositionedStreamTouch *touch = [PositionedStreamTouch new]; touch.targetView = view; touch.point = CGPointMake(200, 200);
+    FixtureStreamTouchEvent *event = [FixtureStreamTouchEvent new]; event.touchSet = [NSSet setWithObject:touch];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    [handler touchesEnded:event.touchSet withEvent:event];
+    XCTAssertEqualObjects(handler.buttonEvents, (@[@[@(BUTTON_ACTION_PRESS), @(BUTTON_LEFT)], @[@(BUTTON_ACTION_RELEASE), @(BUTTON_LEFT)]]));
+    [handler.buttonEvents removeAllObjects];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    touch.point = CGPointMake(400, 400);
+    [handler touchesMoved:event.touchSet withEvent:event];
+    XCTAssertEqual(handler.buttonEvents.count, 0U);
+    [handler onSingleTouchReady:nil];
+    XCTAssertEqualObjects(handler.buttonEvents, (@[@[@(BUTTON_ACTION_PRESS), @(BUTTON_LEFT)]]));
+    touch.point = CGPointMake(600, 600);
+    [handler touchesEnded:event.touchSet withEvent:event];
+    XCTAssertEqualWithAccuracy(view.packetPoint.x / view.packetSize.width, 0.6, 0.0001);
+    XCTAssertEqualObjects(handler.buttonEvents.lastObject, (@[@(BUTTON_ACTION_RELEASE), @(BUTTON_LEFT)]));
+    [handler.buttonEvents removeAllObjects];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    [handler onLongPressStart:nil];
+    [handler touchesEnded:event.touchSet withEvent:event];
+    XCTAssertEqualObjects(handler.buttonEvents, (@[@[@(BUTTON_ACTION_PRESS), @(BUTTON_RIGHT)], @[@(BUTTON_ACTION_RELEASE), @(BUTTON_RIGHT)]]));
+    // Cancellation releases an established drag exactly once, without another tap.
+    [handler.buttonEvents removeAllObjects];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    [handler onSingleTouchReady:nil];
+    touch.point = CGPointMake(700, 700);
+    [handler touchesMoved:event.touchSet withEvent:event];
+    [handler touchesCancelled:event.touchSet withEvent:event];
+    [handler touchesEnded:event.touchSet withEvent:event];
+    XCTAssertEqualObjects(handler.buttonEvents, (@[@[@(BUTTON_ACTION_PRESS), @(BUTTON_LEFT)], @[@(BUTTON_ACTION_RELEASE), @(BUTTON_LEFT)]]));
+}
+
+- (void)testSecondFingerCancelsPendingRelativeDrag {
+    UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 400, 800)];
+    RelativeTouchHandler *handler = [[RelativeTouchHandler alloc] initWithView:(StreamView *)view];
+    FixtureStreamTouch *first = [FixtureStreamTouch new]; first.targetView = view;
+    FixtureStreamTouch *second = [FixtureStreamTouch new]; second.targetView = view;
+    FixtureStreamTouchEvent *event = [FixtureStreamTouchEvent new]; event.touchSet = [NSSet setWithObject:first];
+    [handler touchesBegan:event.touchSet withEvent:event];
+    event.touchSet = [NSSet setWithObjects:first, second, nil];
+    [handler touchesBegan:[NSSet setWithObject:second] withEvent:event];
+    XCTAssertNil([handler valueForKey:@"dragTimer"], @"A pinch must not inherit the first finger's drag timer");
+    [handler touchesCancelled:event.touchSet withEvent:event];
+}
+
 - (void)testDirectTouchMovesToEveryTapEvenNearThePreviousTap {
     PointerRecordingView *view = [[PointerRecordingView alloc] initWithFrame:CGRectMake(0, 0, 1000, 1000)];
     StreamConfiguration *config = [StreamConfiguration new]; config.width = 1000; config.height = 1000;
@@ -148,9 +243,9 @@
     [handler touchesEnded:event.touchSet withEvent:event];
     touch.point = CGPointMake(510, 510); touch.time = 10.1;
     [handler touchesBegan:event.touchSet withEvent:event];
+    [handler touchesEnded:event.touchSet withEvent:event];
     XCTAssertEqualWithAccuracy(view.packetPoint.x / view.packetSize.width, 0.51, 0.0001);
     XCTAssertEqualWithAccuracy(view.packetPoint.y / view.packetSize.height, 0.51, 0.0001);
-    [handler touchesEnded:event.touchSet withEvent:event];
 }
 
 - (void)testDirectTouchSendsTheFinalFingerPositionBeforeEndingADrag {

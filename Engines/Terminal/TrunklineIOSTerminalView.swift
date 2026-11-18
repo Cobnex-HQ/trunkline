@@ -1,4 +1,4 @@
-// Modified for Trunkline on 2026-11-17. Preserve native scrollback during new output.
+// Modified for Trunkline on 2026-11-18. Preserve scrollback and the live prompt during viewport resizing.
 // Based on SwiftTerm b1262db5b6bea699a8260a8c66999436c508ca56. Original MIT notices retained.
 //
 //  iOSTerminalView.swift
@@ -1189,15 +1189,23 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         let originChanged = currentBounds.origin != lastLayoutBounds.origin
 
         if sizeChanged {
+            // UIKit has already applied the new height. Comparing the old offset
+            // with the new bottom incorrectly treats keyboard/rotation shrinkage
+            // as a manual scroll and strands the live prompt below the viewport.
+            let previousHeight = max(currentBounds.height, lastLayoutBounds.height)
+            let following = currentBounds.minY >= max(0, contentSize.height - previousHeight) - 1
             processSizeChange(newSize: currentBounds.size)
+            if following {
+                contentOffset = CGPoint(x: 0, y: max(0, contentSize.height - bounds.height))
+            }
             updateCursorPosition()
         }
 
         if sizeChanged || originChanged {
-            setNeedsDisplay(currentBounds)
+            setNeedsDisplay(bounds)
         }
 
-        lastLayoutBounds = currentBounds
+        lastLayoutBounds = bounds
     }
 
     // iOS Keyboard input

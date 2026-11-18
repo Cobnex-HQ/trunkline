@@ -56,6 +56,10 @@ For connection input, test with several saved Macs and the software keyboard in 
 
 For desktop navigation, verify three-finger left/right changes Spaces, up opens Mission Control and down opens App windows. Verify the equivalent toolbar/menu actions and that two-finger pinch/pan still work. Test with VoiceOver using the menu alternatives. Physical display switching and Mac Spaces are separate features. Test both with different monitor aspect ratios.
 
+For terminal input, start a session in each orientation and rotate with the keyboard shown and hidden. Tap the terminal to open the keyboard, type, use shortcut keys, dismiss by button and swipe, then rotate again. The shortcut row must stay above the keyboard and the live prompt must remain visible. Scroll into history and rotate again to check that reading position is preserved. Repeat with a full-screen terminal program and a hardware keyboard.
+
+For desktop zoom, place the two fingers slightly apart in time, pinch, then lift one finger before the other. The gesture must not click or move the Mac pointer. Check normal taps, single-finger drags and long-press right clicks afterward.
+
 Check local Wi-Fi, a different Wi-Fi network and cellular independently. Simulator tests and two processes on one machine are not evidence of an external connection. Check reboot/login behaviour and initial FileVault unlock separately. Record results without device IDs or connection secrets.
 
 ## Mac client

@@ -377,6 +377,9 @@ private final class ReviewTerminalView: SessionTerminalView {
         guard !hasSample, bounds.width > 44, bounds.height > 44 else { return }
         hasSample = true
         getTerminal().setCursorStyle(.steadyBlock)
+        if ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_TERMINAL_HISTORY"] == "1" {
+            feed(text: (0..<200).map { "Build output line \($0)\r\n" }.joined())
+        }
         feed(text: "\u{001B}[36m~/project\u{001B}[0m % swift build\r\nBuilding for debugging…\r\nBuild complete.\r\n\r\n\u{001B}[36m~/project\u{001B}[0m % ")
     }
 }

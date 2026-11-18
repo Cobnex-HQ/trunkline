@@ -15,103 +15,117 @@
 
 #include <Limelight.h>
 
-// How long the fingers must be stationary to start a right click
-#define LONG_PRESS_ACTIVATION_DELAY 0.650f
-
-// How far the finger can move before it cancels a right click
-#define LONG_PRESS_ACTIVATION_DELTA 0.01f
+// Allow the second finger of a pinch to arrive before starting a remote drag.
+static const NSTimeInterval SingleTouchDelay = 0.12;
+static const NSTimeInterval LongPressDelay = 0.65;
+static const CGFloat DragThreshold = 5;
 
 @interface AbsoluteTouchHandler () <TrunklineTouchInput>
 @end
 
 @implementation AbsoluteTouchHandler {
-    __weak StreamView* view;
-    
-    NSTimer* longPressTimer;
-    CGPoint lastTouchDownLocation;
+    __weak StreamView *view;
+    NSTimer *longPressTimer;
+    NSTimer *singleTouchTimer;
+    CGPoint startLocation, currentLocation;
+    BOOL active, moved, singleTouchReady;
+    int heldButton;
 }
 
-- (id)initWithView:(StreamView*)view {
+- (id)initWithView:(StreamView *)view {
     self = [self init];
     self->view = view;
     return self;
 }
 
-- (void)onLongPressStart:(NSTimer*)timer {
-    if (!view) return;
-    // Raise the left click and start a right click
-    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
-    LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_RIGHT);
+- (void)emitMouseButtonAction:(char)action button:(int)button {
+    LiSendMouseButtonEvent(action, button);
+}
+
+- (void)beginDragIfReady {
+    if (!active || !view || !moved || !singleTouchReady || heldButton) return;
+    [view updateCursorLocation:startLocation isMouse:NO];
+    heldButton = BUTTON_LEFT;
+    [self emitMouseButtonAction:BUTTON_ACTION_PRESS button:heldButton];
+    [view updateCursorLocation:currentLocation isMouse:NO];
+}
+
+- (void)onSingleTouchReady:(NSTimer *)timer {
+    [singleTouchTimer invalidate];
+    singleTouchTimer = nil;
+    singleTouchReady = YES;
+    [self beginDragIfReady];
+}
+
+- (void)onLongPressStart:(NSTimer *)timer {
+    if (!active || !view || moved || heldButton) return;
+    [longPressTimer invalidate];
+    longPressTimer = nil;
+    [view updateCursorLocation:currentLocation isMouse:NO];
+    heldButton = BUTTON_RIGHT;
+    [self emitMouseButtonAction:BUTTON_ACTION_PRESS button:heldButton];
 }
 
 - (void)cancelPendingInput {
     [longPressTimer invalidate];
     longPressTimer = nil;
+    [singleTouchTimer invalidate];
+    singleTouchTimer = nil;
+    active = NO;
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
-    // Ignore touch down events with more than one finger
-    if ([[event allTouches] count] > 1) {
+    if (event.allTouches.count != 1) {
+        [self touchesCancelled:touches withEvent:event];
         return;
     }
-    
-    UITouch* touch = [touches anyObject];
-    CGPoint touchLocation = [touch locationInView:view];
-    
-    // Direct touch is an absolute target, including a second nearby tap. Keeping
-    // the previous position here makes small controls miss the user's finger.
-    [view updateCursorLocation:touchLocation isMouse:NO];
-    
-    // Press the left button down
-    LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_LEFT);
-    
-    // Start the long press timer
-    longPressTimer = [NSTimer scheduledTimerWithTimeInterval:LONG_PRESS_ACTIVATION_DELAY
-                                                      target:self
-                                                    selector:@selector(onLongPressStart:)
-                                                    userInfo:nil
-                                                     repeats:NO];
-    
-    lastTouchDownLocation = touchLocation;
+    [self cancelPendingInput];
+    startLocation = currentLocation = [[touches anyObject] locationInView:view];
+    active = YES;
+    moved = singleTouchReady = NO;
+    singleTouchTimer = [NSTimer scheduledTimerWithTimeInterval:SingleTouchDelay target:self
+        selector:@selector(onSingleTouchReady:) userInfo:nil repeats:NO];
+    longPressTimer = [NSTimer scheduledTimerWithTimeInterval:LongPressDelay target:self
+        selector:@selector(onLongPressStart:) userInfo:nil repeats:NO];
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
-    // Ignore touch move events with more than one finger
-    if ([[event allTouches] count] > 1) {
+    if (event.allTouches.count != 1) {
+        [self touchesCancelled:touches withEvent:event];
         return;
     }
-    
-    UITouch* touch = [touches anyObject];
-    CGPoint touchLocation = [touch locationInView:view];
-    
-    if (sqrt(pow((touchLocation.x / view.bounds.size.width) - (lastTouchDownLocation.x / view.bounds.size.width), 2) +
-             pow((touchLocation.y / view.bounds.size.height) - (lastTouchDownLocation.y / view.bounds.size.height), 2)) > LONG_PRESS_ACTIVATION_DELTA) {
-        // Moved too far since touch down. Cancel the long press timer.
+    if (!active) return;
+    currentLocation = [[touches anyObject] locationInView:view];
+    if (hypot(currentLocation.x - startLocation.x, currentLocation.y - startLocation.y) >= DragThreshold) {
+        moved = YES;
         [longPressTimer invalidate];
         longPressTimer = nil;
     }
-    
-    [view updateCursorLocation:[[touches anyObject] locationInView:view] isMouse:NO];
+    if (heldButton) [view updateCursorLocation:currentLocation isMouse:NO];
+    else [self beginDragIfReady];
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
-    // Only fire this logic if all touches have ended
-    if ([[event allTouches] count] == [touches count]) {
-        // UIKit can deliver a new position with the lift, without an intervening
-        // touchesMoved. Send it before releasing so a drag ends at the finger.
-        if (touches.count == 1) {
-            [view updateCursorLocation:[[touches anyObject] locationInView:view] isMouse:NO];
-        }
+    if (!active) return;
+    if (event.allTouches.count != 1 || touches.count != 1) {
         [self touchesCancelled:touches withEvent:event];
+        return;
     }
+    // A tap commits on lift, after it can no longer become a pinch. Drags also
+    // send the final finger position, which UIKit may omit from touchesMoved.
+    [view updateCursorLocation:[[touches anyObject] locationInView:view] isMouse:NO];
+    if (!heldButton) {
+        heldButton = BUTTON_LEFT;
+        [self emitMouseButtonAction:BUTTON_ACTION_PRESS button:heldButton];
+    }
+    [self touchesCancelled:touches withEvent:event];
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
-    // Pinch/pan cancellation must release the drag without teleporting to one
-    // of the gesture's fingers or synthesizing a final pointer target.
     [self cancelPendingInput];
-    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
-    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
+    if (heldButton) {
+        [self emitMouseButtonAction:BUTTON_ACTION_RELEASE button:heldButton];
+        heldButton = 0;
+    }
 }
-
 @end

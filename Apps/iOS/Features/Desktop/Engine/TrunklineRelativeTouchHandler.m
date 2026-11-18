@@ -87,6 +87,7 @@ static const int REFERENCE_HEIGHT = 720;
         }
     }
     else if ([[event allTouches] count] == 2) {
+        [self cancelPendingInput];
         CGPoint firstLocation = [[[[event allTouches] allObjects] objectAtIndex:0] locationInView:view];
         CGPoint secondLocation = [[[[event allTouches] allObjects] objectAtIndex:1] locationInView:view];
         
@@ -95,6 +96,7 @@ static const int REFERENCE_HEIGHT = 720;
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
+    if (peakTouchCount == 0) return;
     if ([[event allTouches] count] == 1) {
         UITouch *touch = [[event allTouches] anyObject];
         CGPoint currentLocation = [touch locationInView:view];
@@ -136,6 +138,7 @@ static const int REFERENCE_HEIGHT = 720;
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+    if (peakTouchCount == 0) return;
     [dragTimer invalidate];
     dragTimer = nil;
     if (isDragging) {

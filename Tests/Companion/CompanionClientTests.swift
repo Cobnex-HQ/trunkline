@@ -107,6 +107,50 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertTrue(terminal.isScrollEnabled && terminal.isUserInteractionEnabled)
     }
 
+    func testTerminalFollowsLiveOutputAcrossKeyboardAndOrientationResizes() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 844, height: 200),
+            font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        terminal.layoutIfNeeded()
+        terminal.feed(text: (0..<200).map { "line \($0)\r\n" }.joined())
+        try await Task.sleep(for: .milliseconds(100))
+        terminal.jumpToLatest()
+        for size in [CGSize(width: 390, height: 700), CGSize(width: 390, height: 350),
+                     CGSize(width: 844, height: 140), CGSize(width: 390, height: 700)] {
+            terminal.frame.size = size
+            terminal.setNeedsLayout()
+            terminal.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(terminal.contentOffset.y, max(0, terminal.contentSize.height - size.height), accuracy: 1,
+                           "Rotation and keyboard changes must keep the live prompt visible")
+            let fitted = terminal.getOptimalFrameSize().size
+            XCTAssertLessThanOrEqual(abs(fitted.height - size.height), 20)
+            XCTAssertLessThanOrEqual(abs(fitted.width - size.width), 12)
+        }
+    }
+
+    func testTerminalRotationPreservesManualScrollbackAndTouchInput() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 700),
+            font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        let recorder = TerminalInputRecorder()
+        terminal.terminalDelegate = recorder
+        terminal.layoutIfNeeded()
+        terminal.feed(text: (0..<200).map { "line \($0)\r\n" }.joined())
+        try await Task.sleep(for: .milliseconds(100))
+        terminal.contentOffset.y = 170
+        terminal.layoutIfNeeded()
+        terminal.frame.size = CGSize(width: 844, height: 180)
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(terminal.contentOffset.y, 170, accuracy: 1,
+                       "Resizing must not pull a reader away from history")
+        terminal.insertText("hello")
+        terminal.deleteBackward()
+        terminal.insertText("\n")
+        XCTAssertEqual(recorder.bytes, Array("hello".utf8) + [127, 13],
+                       "Soft keyboard text, delete and return must survive resizing")
+    }
+
     func testTerminalOutputDoesNotPullReaderBackToBottom() async throws {
         let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 300), font: .monospacedSystemFont(ofSize: 14, weight: .regular))
         terminal.layoutIfNeeded()

@@ -23,7 +23,7 @@ final class UIReviewScreenshots: XCTestCase {
     private func launch(_ section: String, extra: [String: String] = [:]) {
         app.terminate()
         app.launchEnvironment["TRUNKLINE_REVIEW_SECTION"] = section
-        for key in ["TRUNKLINE_REVIEW_EMPTY_TERMINALS", "TRUNKLINE_REVIEW_LOADING_TERMINALS", "TRUNKLINE_REVIEW_CREATING_TERMINAL", "TRUNKLINE_REVIEW_LEGACY_FILES", "TRUNKLINE_REVIEW_DELAY_REFRESH", "TRUNKLINE_REVIEW_LARGE_TEXT"] {
+        for key in ["TRUNKLINE_REVIEW_EMPTY_TERMINALS", "TRUNKLINE_REVIEW_LOADING_TERMINALS", "TRUNKLINE_REVIEW_CREATING_TERMINAL", "TRUNKLINE_REVIEW_LEGACY_FILES", "TRUNKLINE_REVIEW_DELAY_REFRESH", "TRUNKLINE_REVIEW_LARGE_TEXT", "TRUNKLINE_REVIEW_TERMINAL_HISTORY"] {
             app.launchEnvironment[key] = extra[key] ?? "0"
         }
         app.launch()
@@ -98,6 +98,29 @@ final class UIReviewScreenshots: XCTestCase {
         XCTAssertTrue(target.exists && target.isHittable, "Could not reveal menu item: \(title)")
     }
 
+    func testTerminalStartedInLandscapeFillsPortrait() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launch("terminal")
+        let session = app.staticTexts["Project · build"].firstMatch
+        XCTAssertTrue(session.waitForExistence(timeout: 8))
+        session.tap()
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = direction
+            let terminal = app.textViews["Mac terminal session"]
+            let history = app.buttons["Scroll history up"].firstMatch
+            XCTAssertTrue(terminal.waitForExistence(timeout: 8))
+            XCTAssertTrue(history.exists)
+            XCTAssertGreaterThanOrEqual(terminal.frame.width, app.frame.width * 0.85)
+            XCTAssertEqual(terminal.frame.maxY, history.frame.minY, accuracy: 24,
+                           "Terminal must reach the shortcut bar after rotation")
+            XCTAssertGreaterThan(terminal.frame.height, app.frame.height * 0.55)
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "landscape-start-terminal-\(direction.rawValue)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+    }
+
     func testConnectedTerminalRotation() {
         launch("terminal")
         let session = app.staticTexts["Project · build"].firstMatch
@@ -126,6 +149,14 @@ final class UIReviewScreenshots: XCTestCase {
                                         "Sidebar crowds the terminal beside a full-width keyboard")
             XCTAssertLessThanOrEqual(terminal.frame.maxY, escape.frame.minY + 1,
                                      "Keyboard accessory covers the terminal")
+            XCTAssertGreaterThan(terminal.frame.height, 70, "Terminal collapsed above the keyboard")
+            XCTAssertEqual(terminal.frame.maxY, escape.frame.minY, accuracy: 8,
+                           "Terminal leaves an unused gap above the accessory")
+            let systemKey = app.keys["q"].firstMatch
+            XCTAssertTrue(systemKey.waitForExistence(timeout: 8))
+            XCTAssertLessThanOrEqual(escape.frame.maxY, systemKey.frame.minY,
+                                     "Shortcut keys fell underneath the software keyboard")
+            XCTAssertTrue(escape.isHittable)
             XCTAssertTrue(app.buttons["Session controls"].isHittable)
             let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             screenshot.name = "connected-terminal-\(direction.rawValue)"
@@ -145,6 +176,66 @@ final class UIReviewScreenshots: XCTestCase {
             XCTAssertTrue(app.tabBars.buttons["Controls"].waitForExistence(timeout: 5))
             app.tabBars.buttons["Controls"].tap()
             XCTAssertTrue(app.buttons["Spotlight"].firstMatch.waitForExistence(timeout: 5))
+        }
+    }
+
+    func testTerminalTouchFocusAndKeyboardDismissalAcrossRotation() {
+        launch("terminal")
+        app.staticTexts["Project · build"].firstMatch.tap()
+        let terminal = app.textViews["Mac terminal session"]
+        XCTAssertTrue(terminal.waitForExistence(timeout: 8))
+        for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = direction
+            terminal.tap()
+            let dismiss = app.buttons["terminal.key.Hide keyboard"]
+            XCTAssertTrue(dismiss.waitForExistence(timeout: 8), "Touching the terminal must open the keyboard")
+            let escape = app.buttons["terminal.key.Escape"]
+            let key = app.keys["q"].firstMatch
+            XCTAssertTrue(key.waitForExistence(timeout: 8))
+            XCTAssertLessThanOrEqual(escape.frame.maxY, key.frame.minY)
+            XCTAssertEqual(terminal.frame.maxY, escape.frame.minY, accuracy: 8)
+            XCTAssertTrue(escape.isHittable)
+            escape.tap()
+            app.typeText("test")
+            dismiss.tap()
+            XCTAssertTrue(app.buttons["Show keyboard"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["Scroll history up"].firstMatch.isHittable)
+            XCTAssertGreaterThan(terminal.frame.height, app.frame.height * 0.55)
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "terminal-touch-dismiss-\(direction.rawValue)"
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+    }
+
+    func testTerminalScrollDismissAndRotationWithHistory() {
+        launch("terminal", extra: ["TRUNKLINE_REVIEW_TERMINAL_HISTORY": "1"])
+        app.staticTexts["Project · build"].firstMatch.tap()
+        let terminal = app.textViews["Mac terminal session"]
+        XCTAssertTrue(terminal.waitForExistence(timeout: 8))
+        terminal.tap()
+        XCTAssertTrue(app.buttons["terminal.key.Hide keyboard"].waitForExistence(timeout: 8))
+        // Real sessions have scrollback. Exercise interactive keyboard dismissal,
+        // which can change focus while the rotation transition is also running.
+        let top = terminal.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+        let bottom = terminal.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+        top.press(forDuration: 0.05, thenDragTo: bottom)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.navigationBars.buttons.matching(NSPredicate(format: "label == 'Show keyboard' OR label == 'Hide keyboard'")).firstMatch.tap()
+        if !app.buttons["terminal.key.Hide keyboard"].exists { terminal.tap() }
+        for direction: UIDeviceOrientation in [.landscapeLeft, .portrait] {
+            XCUIDevice.shared.orientation = direction
+            let escape = app.buttons["terminal.key.Escape"]
+            XCTAssertTrue(escape.waitForExistence(timeout: 8))
+            XCTAssertTrue(escape.isHittable)
+            let key = app.keys["q"].firstMatch
+            XCTAssertTrue(key.exists)
+            XCTAssertLessThanOrEqual(escape.frame.maxY, key.frame.minY)
+            XCTAssertEqual(terminal.frame.maxY, escape.frame.minY, accuracy: 8)
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "terminal-history-keyboard-\(direction.rawValue)"
+            shot.lifetime = .keepAlways
+            add(shot)
         }
     }
 
