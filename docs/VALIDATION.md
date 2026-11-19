@@ -2,6 +2,13 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Companion connection restoration — 2026-11-19
+
+- Reproduced background-return and relaunch failures with local connection fixtures. Backgrounding now releases the connection without discarding the in-memory resume credential. Returning restores the workspace and selected running terminal without creating another shell.
+- Full relaunch uses the existing protected Keychain credential through platform authentication. Explicit Disconnect, changed pairing, cancelled unlock and busy-host rejection prevent unwanted reconnection.
+- All 79 companion tests passed on iPhone and iPad simulators. New tests cover both restoration paths, stale unlock completion, duplicate activation, explicit disconnect and another device using the host.
+- Signed builds were installed on both physical devices. The Mac host was not restarted. Device authentication and hands-on background/relaunch acceptance remain to be checked locally.
+
 ## Terminal resize and colour environment — 2026-11-18
 
 - Reproduced missing resize signals with the production Mac PTY launcher. Its foreground process group was unset. The new bundled launcher acquires the controlling terminal before starting the shell.

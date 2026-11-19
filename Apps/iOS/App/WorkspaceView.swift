@@ -9,9 +9,9 @@ struct ConnectedTabs: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var columns: NavigationSplitViewVisibility = .automatic
     @State private var workspaceWidth: CGFloat = 0
-    init(model: ConnectionModel, initialSelection: WorkspaceSection = .desktop) {
+    init(model: ConnectionModel, initialSelection: WorkspaceSection? = nil) {
         self.model = model
-        _selection = State(initialValue: initialSelection)
+        _selection = State(initialValue: initialSelection ?? model.workspaceSection)
     }
 
     @ViewBuilder
@@ -49,7 +49,7 @@ struct ConnectedTabs: View {
                 workspaceWidth = width
                 fitColumns()
             }
-            .onChange(of: selection) { _, _ in fitColumns() }
+            .onChange(of: selection) { _, section in model.workspaceSection = section; fitColumns() }
             .onChange(of: model.selectedTerminalID) { _, _ in fitColumns() }
         } else { workspaceTabs }
     }
@@ -90,6 +90,7 @@ struct ConnectedTabs: View {
         }
         .tint(Color("AccentColor"))
         .environment(\.defaultMinListRowHeight, 44)
+        .onChange(of: selection) { _, section in model.workspaceSection = section }
     }
 }
 

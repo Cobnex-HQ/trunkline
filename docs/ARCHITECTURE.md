@@ -23,6 +23,8 @@ Both apps use `TrunklineCore` for messages, connections, security and shared pol
 
 `Services/TerminalLauncher` starts each shell in its own POSIX session with a controlling terminal. It runs beside the host executable and acquires the PTY before replacing itself with the login shell. This lets foreground programs receive resize signals and use job control without forking the multithreaded Mac app. Terminal sessions advertise true colour and discard inherited automation colour flags. Shell configuration can still override those defaults.
 
+The companion releases its connection when backgrounded, allowing another device to use the Mac. Returning to the same app process reconnects with the authenticated credential held in memory and restores the workspace and running terminal selection. After a full relaunch, restoring the last connected Mac requires a saved Keychain credential and platform authentication. Explicit Disconnect clears automatic restoration. Credentials are never saved in preferences, and a busy host can reject a resume.
+
 ## Where to start reading
 
 All paths below are relative to the repository root. Each row identifies entry points, not every supporting file.

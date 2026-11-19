@@ -54,9 +54,17 @@ struct TrunklineApp: SwiftUI.App {
                         .overlay { Label("Trunkline", systemImage: "lock.shield").font(.title) }
                 }
             }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .background { model.disconnect() }
-                else if phase == .active { model.checkLocalRoute() }
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                if phase == .background { model.applicationDidEnterBackground() }
+                else if phase == .active {
+                    // Face ID temporarily makes the scene inactive. Do not cancel
+                    // its unlock task during that transition. The model rejects
+                    // stale results if the app actually enters the background.
+                    Task {
+                        guard UIApplication.shared.applicationState == .active else { return }
+                        await model.applicationDidBecomeActive()
+                    }
+                }
             }
             .onOpenURL { url in
                 guard model.phase == .setup else { return }

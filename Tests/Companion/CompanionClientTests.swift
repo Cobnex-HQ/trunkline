@@ -11,6 +11,148 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testBackgroundDuringSavedUnlockDiscardsTheResultAndDoesNotPromptTwice() async throws {
+        let suite = "resume-unlock-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pairing = try PairingDetails(host: "127.0.0.1", port: 443, fingerprint: String(repeating: "c", count: 64))
+        defaults.set(pairing.fingerprint, forKey: "resume-mac-id")
+        var completion: CheckedContinuation<Data?, Never>?
+        var unlocks = 0
+        var connections = 0
+        let model = ConnectionModel(defaults: defaults, makeChannel: { pairing in
+            connections += 1
+            return SecureChannel(pairing: pairing)
+        }, containsSavedSecret: { $0 == SavedMac.credentialKey(pairing.fingerprint) }, unlockSavedSecret: { _ in
+            unlocks += 1
+            return await withCheckedContinuation { completion = $0 }
+        })
+        defer { model.disconnect() }
+        model.pairingText = pairing.link
+        let activation = Task { await model.applicationDidBecomeActive() }
+        try await terminalEventually { completion != nil }
+        await model.applicationDidBecomeActive()
+        XCTAssertEqual(unlocks, 1)
+        model.applicationDidEnterBackground()
+        completion?.resume(returning: Data("fixture-passcode".utf8))
+        await activation.value
+        XCTAssertEqual(connections, 0)
+        XCTAssertEqual(model.phase, .setup)
+        XCTAssertEqual(model.passcode, "")
+        await model.applicationDidBecomeActive()
+        XCTAssertEqual(unlocks, 1, "Cancelling an unlock must not create a prompt loop")
+    }
+
+    func testRelaunchUnlocksSavedMacOnceAndExplicitDisconnectCancelsRestoration() async throws {
+        let ready = expectation(description: "Relaunch fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "relaunch-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pairing = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "d", count: 64))
+        var unlocks = 0
+        func makeModel() -> ConnectionModel {
+            ConnectionModel(defaults: defaults, makeChannel: { _ in
+                SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+            }, containsSavedSecret: { $0 == SavedMac.credentialKey(pairing.fingerprint) }, unlockSavedSecret: { _ in
+                unlocks += 1
+                return Data("fixture-passcode".utf8)
+            })
+        }
+        let original = makeModel()
+        original.pairingText = pairing.link
+        original.passcode = "fixture-passcode"
+        original.connect()
+        try await terminalEventually { original.phase == .connected }
+        original.applicationDidEnterBackground()
+        let relaunched = makeModel()
+        defer { original.disconnect(); relaunched.disconnect() }
+        await relaunched.applicationDidBecomeActive()
+        try await terminalEventually { relaunched.phase == .connected }
+        await relaunched.applicationDidBecomeActive()
+        XCTAssertEqual(unlocks, 1)
+        XCTAssertEqual(server.authentications, 2)
+        relaunched.disconnect()
+        let afterDisconnect = makeModel()
+        defer { afterDisconnect.disconnect() }
+        await afterDisconnect.applicationDidBecomeActive()
+        XCTAssertEqual(afterDisconnect.phase, .setup)
+        XCTAssertEqual(unlocks, 1, "Explicit disconnect must not trigger another biometric prompt")
+        XCTAssertFalse(defaults.dictionaryRepresentation().values.contains { ($0 as? String) == "fixture-passcode" })
+    }
+
+    func testBackgroundReturnRestoresAuthenticatedTerminalWithoutTypingPasscode() async throws {
+        let ready = expectation(description: "Resume fixture")
+        let session = TerminalSessionInfo(id: UUID(), title: "Existing job", kind: .shell, isRunning: true)
+        let server = try TerminalCreationServer(ready: ready, sessions: [session])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "resume-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "e", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually { model.sessions.count == 1 }
+        XCTAssertEqual(model.passcode, "")
+        model.selectedTerminalID = session.id
+        model.workspaceSection = .terminal
+        model.applicationDidEnterBackground()
+        XCTAssertEqual(model.phase, .setup, "Backgrounding must release the host for another device")
+        await model.applicationDidBecomeActive()
+        try await terminalEventually { model.phase == .connected && model.hasLoadedTerminals }
+        XCTAssertEqual(server.authentications, 2)
+        XCTAssertEqual(model.selectedTerminalID, session.id)
+        XCTAssertEqual(model.workspaceSection, .terminal)
+        XCTAssertEqual(server.authenticationPasscodes, ["fixture-passcode", "fixture-passcode"])
+        XCTAssertEqual(server.creations, 0, "Resume must not start another terminal")
+        model.applicationDidEnterBackground()
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "f", count: 64)).link
+        await model.applicationDidBecomeActive()
+        XCTAssertEqual(model.phase, .setup, "A previous Mac's session must not authenticate a different pairing")
+        XCTAssertEqual(model.passcode, "")
+        XCTAssertEqual(server.authentications, 2)
+        model.disconnect()
+        await model.applicationDidBecomeActive()
+        XCTAssertEqual(model.phase, .setup, "An explicit disconnect must stay disconnected")
+        XCTAssertEqual(server.authentications, 2)
+    }
+
+    func testBackgroundReturnHonoursAnotherDeviceUsingTheMac() async throws {
+        let ready = expectation(description: "Busy resume fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "resume-busy-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "b", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually { model.phase == .connected }
+        model.applicationDidEnterBackground()
+        server.rejection = "This Mac is in use on another device."
+        await model.applicationDidBecomeActive()
+        try await terminalEventually { model.error != nil }
+        XCTAssertEqual(model.error, server.rejection)
+        XCTAssertEqual(model.phase, .setup)
+        await model.applicationDidBecomeActive()
+        XCTAssertEqual(server.authentications, 2, "A rejected resume must not keep retrying")
+    }
+
     func testEndingSessionWaitsForMacConfirmationAndDeduplicatesRequests() async throws {
         let ready = expectation(description: "Terminal close fixture")
         let session = TerminalSessionInfo(id: UUID(), title: "Running", kind: .shell, isRunning: true)
@@ -1276,6 +1418,7 @@ private struct TerminalKeyboardFixture: View {
     var holdLists = false
     var rejection: String?
     private(set) var authentications = 0
+    private(set) var authenticationPasscodes: [String] = []
     private(set) var creations = 0
     private(set) var closures = 0
     init(ready: XCTestExpectation, stopped: XCTestExpectation? = nil,
@@ -1295,8 +1438,9 @@ private struct TerminalKeyboardFixture: View {
                 channel.onMessage = { [weak self, weak channel] message in
                     guard let self else { return }
                     switch message {
-                    case .authenticate:
+                    case let .authenticate(passcode):
                         self.authentications += 1
+                        self.authenticationPasscodes.append(passcode)
                         if let rejection = self.rejection { channel?.reject(rejection) }
                         else { channel?.send(.accepted(name: "Fixture Mac", display: .fallback)) }
                     case .ping: channel?.send(.pong)

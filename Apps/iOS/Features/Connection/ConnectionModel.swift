@@ -43,6 +43,19 @@ final class ConnectionModel: ObservableObject {
     @Published var desktopDisplay = DesktopDisplay.fallback
     @Published var sessions: [TerminalSessionInfo] = []
     @Published var selectedTerminalID: UUID?
+    @Published var workspaceSection: WorkspaceSection = .desktop
+    // Keep the authenticated credential only for this app process. Persistent
+    // credentials remain in the user-presence-protected Keychain.
+    private struct ResumeConnection {
+        let pairingLink: String
+        let passcode: String
+        var terminalID: UUID?
+    }
+    private var resumeConnection: ResumeConnection?
+    private var pendingTerminalRestore: UUID?
+    private var handledLaunchResume = false
+    private var isForeground = true
+    private var isUnlockingSaved = false
     @Published private(set) var hasLoadedTerminals = false
     @Published private(set) var isCreatingTerminal = false
     @Published private(set) var closingTerminalIDs: Set<UUID> = []
@@ -99,6 +112,10 @@ final class ConnectionModel: ObservableObject {
     func receiveTerminalSessions(_ sessions: [TerminalSessionInfo]) {
         let selectedWasRunning = self.sessions.first { $0.id == selectedTerminalID }?.isRunning == true
         self.sessions = sessions
+        if let id = pendingTerminalRestore {
+            selectedTerminalID = sessions.first(where: { $0.id == id && $0.isRunning })?.id
+            pendingTerminalRestore = nil
+        }
         for id in closingTerminalIDs where !sessions.contains(where: { $0.id == id }) { finishTerminalClose(id) }
         hasLoadedTerminals = true
         if let previousIDs = terminalIDsBeforeCreation,
@@ -124,9 +141,17 @@ final class ConnectionModel: ObservableObject {
     private let terminalCreationTimeout: TimeInterval
     private let terminalCloseTimeout: TimeInterval
     private let makeChannel: @MainActor (PairingDetails) -> SecureChannel
+    private let containsSavedSecret: (String) -> Bool
+    private let unlockSavedSecret: @MainActor (String) async throws -> Data?
     init(defaults: UserDefaults = .standard, heartbeatInterval: TimeInterval = 5,
          heartbeatTimeout: TimeInterval = 15, terminalCreationTimeout: TimeInterval = 15, terminalCloseTimeout: TimeInterval = 10,
-         makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) }) {
+         makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) },
+         containsSavedSecret: @escaping (String) -> Bool = { SecretStore.contains($0) },
+         unlockSavedSecret: @escaping @MainActor (String) async throws -> Data? = { key in
+             let context = LAContext()
+             guard try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock your saved Mac connection") else { return nil }
+             return SecretStore.read(key, context: context)
+         }) {
         precondition(heartbeatInterval > 0 && heartbeatTimeout >= heartbeatInterval)
         precondition(terminalCreationTimeout > 0)
         precondition(terminalCloseTimeout > 0)
@@ -137,6 +162,8 @@ final class ConnectionModel: ObservableObject {
         self.terminalCreationTimeout = terminalCreationTimeout
         self.terminalCloseTimeout = terminalCloseTimeout
         self.makeChannel = makeChannel
+        self.containsSavedSecret = containsSavedSecret
+        self.unlockSavedSecret = unlockSavedSecret
         useAwayAccess = defaults.bool(forKey: "use-away-access")
         let selectionID = macStore.selectedID
         let selected = macStore.macs.first { $0.id == selectionID }
@@ -151,15 +178,16 @@ final class ConnectionModel: ObservableObject {
     private var savedCredentialKey: String? {
         guard let pairing = try? PairingDetails.parse(pairingText) else { return nil }
         let scoped = SavedMac.credentialKey(pairing.fingerprint)
-        if SecretStore.contains(scoped) { return scoped }
+        if containsSavedSecret(scoped) { return scoped }
         if let legacy = defaults.string(forKey: "credential-pairing"),
            (try? PairingDetails.parse(legacy))?.fingerprint == pairing.fingerprint,
-           SecretStore.contains("client-passcode") { return "client-passcode" }
+           containsSavedSecret("client-passcode") { return "client-passcode" }
         return nil
     }
     var canUnlockSaved: Bool { savedCredentialKey != nil }
     func selectMac(_ id: String) {
         guard phase == .setup, let mac = savedMacs.first(where: { $0.id == id }) else { return }
+        clearResume()
         cancelLocalProbe()
         passcode = ""; rememberPasscode = false; error = nil; offerAwayAccess = false
         pairingText = mac.link; name = mac.name; useAwayAccess = mac.away
@@ -180,6 +208,7 @@ final class ConnectionModel: ObservableObject {
         guard phase == .setup else { return }
         do {
             let pairing = try PairingDetails.parse(url.absoluteString)
+            clearResume()
             if let saved = defaults.string(forKey: "pairing-link"),
                let previous = try? PairingDetails.parse(saved), previous.fingerprint == pairing.fingerprint,
                SecretStore.read(DesktopTrustKey.current(pairing)) == nil,
@@ -207,7 +236,7 @@ final class ConnectionModel: ObservableObject {
         return try PairingDetails(host: pairing.host, port: pairing.port, fingerprint: pairing.fingerprint)
     }
     func connect() {
-        guard phase == .setup else { return }
+        guard phase == .setup, isForeground else { return }
         cancelLocalProbe(); offerAwayAccess = false
         do {
             let pairing = try saveRemoteTicket(PairingDetails.parse(pairingText))
@@ -298,6 +327,7 @@ final class ConnectionModel: ObservableObject {
                     if let paired = try? PairingDetails.parse(connectionLink) {
                         self.macStore.save(paired, name: name, away: self.useAwayAccess)
                         self.savedMacs = self.macStore.macs
+                        self.defaults.set(paired.fingerprint, forKey: "resume-mac-id")
                     }
                     if shouldRememberPasscode {
                         do {
@@ -305,6 +335,8 @@ final class ConnectionModel: ObservableObject {
                             try SecretStore.writeProtected(Data(connectionPasscode.utf8), key: SavedMac.credentialKey(paired.fingerprint))
                         } catch { self.error = "Connected, but the passcode could not be saved." }
                     }
+                    self.resumeConnection = ResumeConnection(pairingLink: connectionLink, passcode: connectionPasscode)
+                    self.handledLaunchResume = true
                     connectionPasscode = ""
                     self.passcode = ""
                     UIApplication.shared.isIdleTimerDisabled = true
@@ -336,20 +368,25 @@ final class ConnectionModel: ObservableObject {
             channel.start()
     }
     func unlockSaved() async {
-        guard canUnlockSaved, phase == .setup else { return }
+        guard canUnlockSaved, phase == .setup, isForeground, !isUnlockingSaved else { return }
+        isUnlockingSaved = true
+        defer { isUnlockingSaved = false }
         let expectedPairing = pairingText
+        let expectedConnectionID = connectionID
         guard let key = savedCredentialKey else { return }
-        let context = LAContext()
         do {
-            let success = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock your saved Mac connection")
-            guard success, pairingText == expectedPairing, let data = SecretStore.read(key, context: context), let value = String(data: data, encoding: .utf8) else { return }
+            guard let data = try await unlockSavedSecret(key), pairingText == expectedPairing,
+                  connectionID == expectedConnectionID, isForeground, !Task.isCancelled,
+                  let value = String(data: data, encoding: .utf8) else { return }
             guard phase == .setup else { return }
             if key == "client-passcode", let pairing = try? PairingDetails.parse(expectedPairing) {
                 try SecretStore.writeProtected(data, key: SavedMac.credentialKey(pairing.fingerprint))
                 SecretStore.delete(key); defaults.removeObject(forKey: "credential-pairing")
             }
             passcode = value; connect()
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            if connectionID == expectedConnectionID, isForeground, !Task.isCancelled { self.error = error.localizedDescription }
+        }
     }
     func forget() {
         guard let pairing = try? PairingDetails.parse(pairingText) else { return }
@@ -366,12 +403,51 @@ final class ConnectionModel: ObservableObject {
         if let next = macStore.selectedID { selectMac(next) }
     }
     func disconnect() {
+        clearResume()
+        workspaceSection = .desktop
+        passcode = ""
+        stopConnection()
+    }
+    private func clearResume() {
+        connectionID = UUID()
+        resumeConnection = nil
+        pendingTerminalRestore = nil
+        handledLaunchResume = true
+        defaults.removeObject(forKey: "resume-mac-id")
+    }
+    private func stopConnection() {
         cancelLocalProbe()
         connectionID = UUID()
         preparing?.cancel(); preparing = nil
         remote?.stop(); remote = nil
         channel?.onClose = nil; channel?.close(); channel = nil
         resetSession()
+    }
+    func applicationDidEnterBackground() {
+        isForeground = false
+        if phase == .connected { resumeConnection?.terminalID = selectedTerminalID }
+        // Release the host's single-device slot and stop streaming. This is a
+        // suspension, not the user's explicit Disconnect action.
+        stopConnection()
+        passcode = ""
+    }
+    func applicationDidBecomeActive() async {
+        guard !Task.isCancelled else { return }
+        isForeground = true
+        guard phase == .setup else { return }
+        if let resume = resumeConnection {
+            guard pairingText == resume.pairingLink else { clearResume(); checkLocalRoute(); return }
+            pendingTerminalRestore = resume.terminalID
+            passcode = resume.passcode
+            rememberPasscode = false
+            connect()
+        } else if !handledLaunchResume {
+            handledLaunchResume = true
+            if let id = selectedMacID, defaults.string(forKey: "resume-mac-id") == id, canUnlockSaved {
+                await unlockSaved()
+            }
+        }
+        if phase == .setup { checkLocalRoute() }
     }
     private var localProbe: SecureChannel?
     private var localProbeDeadline: DispatchWorkItem?
@@ -394,7 +470,7 @@ final class ConnectionModel: ObservableObject {
     }
     func checkLocalRoute() {
         cancelLocalProbe()
-        guard networkAvailable, phase == .setup, !useAwayAccess, hasAwayAccess,
+        guard isForeground, networkAvailable, phase == .setup, !useAwayAccess, hasAwayAccess,
               let pairing = try? PairingDetails.parse(pairingText) else { return }
         let generation = routeGeneration
         let probe = makeChannel(pairing); localProbe = probe

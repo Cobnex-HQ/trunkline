@@ -80,7 +80,7 @@ struct ConnectView: View {
                                                         enabled: !connecting, submit: connect)
                                     .id("connection-passcode")
                             }
-                            if !connecting {
+                            if !connecting && !savedUnlock {
                                 Toggle("Save passcode", isOn: $model.rememberPasscode)
                             }
                             if connecting {
@@ -90,7 +90,7 @@ struct ConnectView: View {
                             }
                         } footer: {
                             if !savedUnlock && !connecting && verticalSizeClass != .compact {
-                                Text("Use the connection passcode shown on your Mac.")
+                                Text("Save the passcode to reconnect with Face ID, Touch ID or your device passcode after closing the app.")
                             }
                         }
                     }

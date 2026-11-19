@@ -58,6 +58,8 @@ Before a binary release, test iPhone and iPad in portrait and landscape, before 
 
 For connection input, test with several saved Macs and the software keyboard in both orientations. The passcode must stay above the keyboard. Reveal/hide must preserve text, selection and focus. Check the Go key, Done dismissal, saved-credential fallback, and large text.
 
+For connection restoration, switch to another app and return. The selected Mac should reconnect without typing a passcode, and an existing selected terminal should reopen without creating a shell. Force-quit and relaunch with a saved passcode to check Face ID, Touch ID or device-passcode unlock. Cancel authentication and verify that prompts do not repeat. Explicit Disconnect must stay disconnected after relaunch. Let another device connect while the first is backgrounded and verify that returning does not take over its session.
+
 For desktop navigation, verify three-finger left/right changes Spaces, up opens Mission Control and down opens App windows. Verify the equivalent toolbar/menu actions and that two-finger pinch/pan still work. Test with VoiceOver using the menu alternatives. Physical display switching and Mac Spaces are separate features. Test both with different monitor aspect ratios.
 
 For terminal input, start a session in each orientation and rotate with the keyboard shown and hidden. Tap the terminal to open the keyboard, type, use shortcut keys, dismiss by button and swipe, then rotate again. The shortcut row must stay above the keyboard and the live prompt must remain visible. Scroll into history and rotate again to check that reading position is preserved. Repeat with a full-screen terminal program and a hardware keyboard.

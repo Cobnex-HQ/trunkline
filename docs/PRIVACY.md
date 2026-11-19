@@ -1,6 +1,6 @@
 # Trunkline privacy notice
 
-Updated 17 November 2026. Covers the current source release and development builds. Verify App Store disclosures against the exact release binary.
+Updated 19 November 2026. Covers the current source release and development builds. Verify App Store disclosures against the exact release binary.
 
 Trunkline connects your iPhone or iPad to your chosen Mac. This release has no Trunkline-operated account, advertising or analytics service.
 
@@ -20,6 +20,8 @@ Apple handles App Store/TestFlight downloads, diagnostics and feedback under its
 ## Control and retention
 
 Disconnect ends a connection. Forget Mac removes a saved companion pairing. Revoke host desktop pairings to remove device access. These actions do not delete transferred files, saved terminal output, OS records or support reports. Uninstalling may leave Keychain items, backups and externally saved files.
+
+While the app remains in memory, it retains the authenticated connection passcode to reconnect after switching apps. Disconnect clears it. After the process ends, reconnection requires the saved Keychain passcode and platform authentication, or manual passcode entry.
 
 Disable Away access to stop its connection setup activity. Revoke camera, network, capture or input permissions in system settings to disable those features.
 
