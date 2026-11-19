@@ -5,6 +5,8 @@
 
 @interface MacDesktopEngine (Testing)
 - (int)submit:(PDECODE_UNIT)unit;
+- (void)recordFrame:(uint32_t)frame time:(double)time;
+- (NSDictionary *)networkSample;
 @end
 @interface MacVideoTests : XCTestCase
 @end
@@ -32,6 +34,19 @@ static void encoded(void *ref, void *source, OSStatus status, VTEncodeInfoFlags 
     }
 }
 @implementation MacVideoTests
+- (void)testRecentFrameGapsUseExpectedFramesAndExpire {
+    MacDesktopEngine *engine = [MacDesktopEngine new];
+    double now = CACurrentMediaTime();
+    XCTAssertNil([engine networkSample]);
+    [engine recordFrame:10 time:now - 2.1];
+    [engine recordFrame:11 time:now - 1];
+    [engine recordFrame:13 time:now];
+    XCTAssertEqualWithAccuracy([[engine networkSample][@"loss"] doubleValue], 0.25, 0.0001);
+    MacDesktopEngine *old = [MacDesktopEngine new];
+    [old recordFrame:10 time:now - 10];
+    [old recordFrame:11 time:now - 7];
+    XCTAssertNil([old networkSample]);
+}
 - (void)testMalformedVideoRequestsAKeyframe {
     MacDesktopEngine *engine = [MacDesktopEngine new];
     DECODE_UNIT unit = {0};

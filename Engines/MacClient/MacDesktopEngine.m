@@ -43,6 +43,11 @@ static void audioDecode(char *data, int length) { @autoreleasepool { [active aud
     CMVideoFormatDescriptionRef _format;
     BOOL _waitingForKeyframe;
     uint64_t _submittedVideoFrames;
+    BOOL _hasNetworkFrame;
+    uint32_t _lastNetworkFrame;
+    uint64_t _expectedFrames, _lostFrames;
+    double _networkWindowStart;
+    NSDictionary<NSString *, NSNumber *> *_networkSample;
     atomic_bool _startedCore;
     OpusMSDecoder *_opus;
     AVAudioEngine *_audioEngine;
@@ -69,6 +74,28 @@ static void audioDecode(char *data, int length) { @autoreleasepool { [active aud
     });
 }
 - (uint64_t)submittedVideoFrames { @synchronized(self) { return _submittedVideoFrames; } }
+- (void)recordFrame:(uint32_t)frame time:(double)time {
+    @synchronized(self) {
+        uint32_t delta = frame - _lastNetworkFrame;
+        if (!_hasNetworkFrame || delta > 10000) {
+            _networkWindowStart = time; _expectedFrames = 1; _lostFrames = 0;
+            _hasNetworkFrame = YES; _networkSample = nil;
+        } else if (delta > 0) {
+            _expectedFrames += delta; _lostFrames += delta - 1;
+        } else { return; }
+        _lastNetworkFrame = frame;
+        if (time - _networkWindowStart >= 2 && _expectedFrames > 0) {
+            _networkSample = @{@"time": @(time), @"loss": @((double)_lostFrames / _expectedFrames)};
+            _networkWindowStart = time; _expectedFrames = 0; _lostFrames = 0;
+        }
+    }
+}
+- (NSDictionary<NSString *, NSNumber *> *)networkSample {
+    @synchronized(self) {
+        if (!_networkSample || self.cancelled || CACurrentMediaTime() - _networkSample[@"time"].doubleValue > 3) return nil;
+        return _networkSample;
+    }
+}
 - (void)startHost:(NSString *)host certificate:(NSData *)certificate width:(int)width height:(int)height fps:(int)fps bitrate:(int)bitrate away:(BOOL)away {
     NSAssert(NSThread.isMainThread, @"Start on the main thread");
     if (active) { [self report:@"Failed" error:@"The previous desktop connection is closing. Try again shortly."]; return; }
@@ -206,6 +233,7 @@ static void audioDecode(char *data, int length) { @autoreleasepool { [active aud
 
 - (int)submit:(PDECODE_UNIT)unit {
     if (self.cancelled || !unit || unit->fullLength <= 0 || unit->fullLength > 8*1024*1024) return DR_NEED_IDR;
+    [self recordFrame:unit->frameNumber time:CACurrentMediaTime()];
     NSMutableData *annex = [NSMutableData dataWithCapacity:unit->fullLength];
     for (PLENTRY part = unit->bufferList; part; part = part->next) {
         if (part->length <= 0 || annex.length + part->length > (NSUInteger)unit->fullLength) return DR_NEED_IDR;

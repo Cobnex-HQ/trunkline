@@ -127,3 +127,9 @@ On the Mac, open **My Mac → Sharing → Devices** to see trusted devices, appr
 For compatibility, a valid passcode initially trusts an updated client. Choose **Require approval for new devices** to restrict new connections. Revoking a device enables this restriction automatically, so a fresh identity cannot bypass revocation. Older clients without device identities cannot connect while approval is required.
 
 Revocation disconnects the current device and clears all desktop-stream pairings. Other trusted devices must pair their desktop again. Terminal processes keep running. An interrupted pairing reset is completed before the desktop engine can start again.
+
+### Connection health
+
+In the iPhone or iPad desktop, open **Spaces and windows → Connection health**. In the Mac desktop window, use **Connection health** in the title bar.
+
+The overlay shows the current local or direct Away route, end-to-end Mac round-trip time, recent video frame loss and the video bitrate target. The target is an encoder setting, not measured network usage. Missing or stale samples show a dash. Detailed engine statistics remain available separately on iPhone and iPad.

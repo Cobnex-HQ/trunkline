@@ -33,7 +33,8 @@ final class UIReviewScreenshots: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [correctAppearance], timeout: 8), .completed, "Wrong effective appearance")
     }
 
-    private func capture(_ name: String, ready: XCUIElement? = nil, readinessTimeout: TimeInterval = 8) {
+    private func capture(_ name: String, ready: XCUIElement? = nil, readinessTimeout: TimeInterval = 8, expectedOrientation: String? = nil) {
+        let orientation = expectedOrientation ?? self.orientation
         let isReady = ready?.waitForExistence(timeout: readinessTimeout) ?? true
         // App-element screenshots can report portrait geometry for a landscape iPad.
         // Capture the actual device display, including system sheets and popovers.
@@ -529,6 +530,18 @@ final class UIReviewScreenshots: XCTestCase {
         capture("desktop-toolbar-hidden", ready: app.buttons["Controls"])
         launch("desktop")
         capture("desktop-primary-action", ready: app.buttons["Open desktop"])
+    }
+
+    func testConnectionHealthOverlay() {
+        launch("desktop-session")
+        tap("Spaces and windows")
+        tap("Connection health")
+        capture("connection-health", ready: app.staticTexts["connection-health"])
+        XCTAssertTrue(app.buttons["Keyboard"].isHittable)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        capture("connection-health-landscape", ready: app.staticTexts["connection-health"], expectedOrientation: "landscape")
+        XCTAssertTrue(app.buttons["Keyboard"].isHittable)
+        XCUIDevice.shared.orientation = .portrait
     }
 
     func testExternalDisplayControls() {

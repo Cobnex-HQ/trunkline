@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import AVFoundation
 import TrunklineCore
 
@@ -125,6 +126,31 @@ final class MacDesktopView: NSView {
 final class MacDesktopWindow: NSWindowController, NSWindowDelegate {
     private let desktop: MacDesktopView
     var onClose: (() -> Void)?
+    private var healthTimer: Timer?
+    private var healthView: NSHostingView<ConnectionHealthOverlay>?
+    func configureHealth(_ sample: @escaping () -> ConnectionHealth) {
+        guard healthView == nil else { return }
+        let overlay = PassthroughHealthView(rootView: ConnectionHealthOverlay(health: sample()))
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        desktop.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: desktop.topAnchor, constant: 12),
+            overlay.trailingAnchor.constraint(equalTo: desktop.trailingAnchor, constant: -12)
+        ])
+        healthView = overlay
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak overlay] _ in
+            MainActor.assumeIsolated { overlay?.rootView = ConnectionHealthOverlay(health: sample()) }
+        }
+        let button = NSButton(title: "Connection health", target: self, action: #selector(toggleHealth))
+        button.setButtonType(.pushOnPushOff)
+        button.state = .off
+        overlay.isHidden = true
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = button
+        accessory.layoutAttribute = .right
+        window?.addTitlebarAccessoryViewController(accessory)
+    }
+    @objc private func toggleHealth(_ sender: NSButton) { healthView?.isHidden = sender.state != .on }
     init(engine: MacDesktopEngine, name: String, size: DesktopStreamGeometry.Size) {
         desktop = MacDesktopView(engine: engine, aspect: CGFloat(size.width) / CGFloat(size.height))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
@@ -142,5 +168,12 @@ final class MacDesktopWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("Use init(engine:name:size:)") }
     func open() { showWindow(nil); window?.makeKeyAndOrderFront(nil); window?.makeFirstResponder(desktop) }
     func windowDidResignKey(_ notification: Notification) { desktop.releaseInput() }
-    func windowWillClose(_ notification: Notification) { desktop.releaseInput(); onClose?() }
+    func windowWillClose(_ notification: Notification) {
+        healthTimer?.invalidate(); healthTimer = nil
+        desktop.releaseInput(); onClose?()
+    }
+}
+
+private final class PassthroughHealthView: NSHostingView<ConnectionHealthOverlay> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

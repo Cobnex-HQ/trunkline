@@ -120,6 +120,7 @@ targets:
       basedOnDependencyAnalysis: false
     sources:
     - path: Apps/iOS
+    - path: Apps/Shared
     - path: Vendor/MoonlightSource/Limelight
       excludes:
       - main.m
@@ -239,6 +240,7 @@ targets:
     platform: macOS
     sources:
     - Apps/macOS
+    - Apps/Shared
     - Engines/MacClient
     - Apps/iOS/Features/Controls/ClientControls.swift
     - Apps/iOS/Features/Connection/ConnectionDiagnosticsView.swift

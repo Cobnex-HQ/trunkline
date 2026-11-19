@@ -172,3 +172,11 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Mac app: 5 tests passed, 1 opt-in live test skipped. Native Mac connection and sharing-confirmation checks passed.
 - Revocation clears both desktop certificate formats before the engine can restart. A persistent marker keeps a failed or interrupted reset pending. Trusted devices must pair their desktop again afterward.
 - Real-device approval and desktop re-pairing acceptance remain to be tested on installed builds. This change has not been installed or pushed.
+
+## Connection health — 2026-11-19
+
+- Core: 137 tests passed, including fresh, stale and invalid connection health samples.
+- Mac app: 6 tests passed, 1 opt-in live test skipped. A native frame-gap test verifies the expected-frame denominator and expiry.
+- The same native SwiftUI overlay is used on iPhone, iPad and Mac. Measurements use end-to-end companion RTT, recent video-frame loss and the encoder bitrate target. Local proxy RTT is not presented as Away latency.
+- Screenshot checks cover the iPhone and iPad viewer in portrait and landscape, including keeping the keyboard control hittable. Missing samples display dashes.
+- No real WAN performance measurement or physical-device installation was performed in this change.

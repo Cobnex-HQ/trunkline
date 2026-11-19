@@ -42,6 +42,7 @@ final class ConnectionModel: ObservableObject {
     @Published var diagnostic = ConnectionDiagnostic()
     @Published var error: String?
     @Published var roundTripMS: Int?
+    private(set) var roundTripTime: TimeInterval?
     @Published var desktopDisplay = DesktopDisplay.fallback
     @Published var sessions: [TerminalSessionInfo] = []
     @Published var selectedTerminalID: UUID?
@@ -388,6 +389,7 @@ final class ConnectionModel: ObservableObject {
                 case .pong:
                     if self.phase == .connected, let sent = self.pingSent {
                         self.roundTripMS = Int(max(0, ProcessInfo.processInfo.systemUptime - sent) * 1000)
+                        self.roundTripTime = ProcessInfo.processInfo.systemUptime
                         self.pingSent = nil
                     }
                 case let .failure(message, cause):
@@ -598,7 +600,7 @@ final class ConnectionModel: ObservableObject {
         sessionPairingLink = ""; connectionStatus = ""
         phase = .setup; heartbeat?.invalidate(); heartbeat = nil
         handshakeTimeout?.cancel(); handshakeTimeout = nil
-        roundTripMS = nil; pingSent = nil
+        roundTripMS = nil; roundTripTime = nil; pingSent = nil
         setAwake(false)
     }
 }

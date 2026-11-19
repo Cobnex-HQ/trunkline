@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy, nullable) void (^stateChanged)(NSString *state, NSString * _Nullable error);
 - (void)startHost:(NSString *)host certificate:(nullable NSData *)certificate width:(int)width height:(int)height fps:(int)fps bitrate:(int)bitrate away:(BOOL)away;
 - (void)stop;
+- (nullable NSDictionary<NSString *, NSNumber *> *)networkSample;
 + (void)finishStopping:(void (^)(void))completion NS_SWIFT_DISABLE_ASYNC;
 - (void)moveX:(double)x y:(double)y;
 - (void)button:(int)button down:(BOOL)down;

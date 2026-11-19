@@ -134,6 +134,14 @@ final class MacClientModel: ObservableObject {
         let size = DesktopStreamGeometry.size(maximumWidth: profile.maximumWidth, displayWidth: width, displayHeight: height)
         let window = MacDesktopWindow(engine: engine, name: connection.name, size: size)
         desktopWindow = window
+        let videoKbps = profile.bitrate / 1000
+        window.configureHealth { [weak connection, weak engine] in
+            let sample = engine?.networkSample()
+            return ConnectionHealth(now: ProcessInfo.processInfo.systemUptime,
+                roundTripMS: connection?.roundTripMS, roundTripTime: connection?.roundTripTime,
+                frameLoss: sample?["loss"]?.doubleValue, videoTime: sample?["time"]?.doubleValue,
+                videoKbps: videoKbps, route: connection?.diagnostic.route ?? .local)
+        }
         window.onClose = { [weak self] in self?.stopDesktop() }
         engine.pairingCode = { [weak self, weak engine] pin in
             guard let self, let engine else { return }

@@ -327,6 +327,7 @@ private struct DesktopScreen: View {
     var adaptive = true
     let close: () -> Void
     @StateObject private var quality = AdaptiveDesktopQuality()
+    @SwiftUI.State private var healthVisible = false
     @SwiftUI.State private var showControls = false
     @SwiftUI.State private var showGestures = false
     @Environment(\.scenePhase) private var scenePhase
@@ -342,6 +343,13 @@ private struct DesktopScreen: View {
             desktopSurface
                 .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
                 .allowsHitTesting(pendingMonitorID == nil && !monitorSwitching)
+                .overlay(alignment: .topTrailing) {
+                    if healthVisible {
+                        TimelineView(.periodic(from: .now, by: 2)) { _ in
+                            ConnectionHealthOverlay(health: connectionHealth).padding(12)
+                        }.allowsHitTesting(false)
+                    }
+                }
                 .overlay {
                     if pendingMonitorID != nil || monitorSwitching {
                         ProgressView("Switching display…").padding(16).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -456,6 +464,13 @@ private struct DesktopScreen: View {
             ?? selection?.selectedDisplay?.geometry ?? model.desktopDisplay
         engine.updateDisplay(in: controller, width: Int32(display.width), height: Int32(display.height))
     }
+    private var connectionHealth: ConnectionHealth {
+        let sample = TrunklineDesktopNetworkSample()
+        return ConnectionHealth(now: ProcessInfo.processInfo.systemUptime,
+            roundTripMS: model.roundTripMS, roundTripTime: model.roundTripTime,
+            frameLoss: sample?["loss"]?.doubleValue, videoTime: sample?["time"]?.doubleValue,
+            videoKbps: model.controls.snapshot?.desktopQuality?.applied ?? Int(config.bitRate), route: model.diagnostic.route)
+    }
     private var leadingTools: some View {
         Group {
             tool("Close", "xmark", action: close)
@@ -487,6 +502,7 @@ private struct DesktopScreen: View {
                 Button(action.title, systemImage: action.symbol) { action.perform(on: engine) }
             }
             Divider()
+            Toggle("Connection health", systemImage: "waveform.path.ecg", isOn: $healthVisible)
             Button("Gestures & displays", systemImage: "hand.draw") { showGestures = true }
             if #available(iOS 27.0, *), UIDevice.current.userInterfaceIdiom == .pad {
                 Toggle("Use external display", systemImage: "display.2", isOn: $externalDisplay)
@@ -509,6 +525,9 @@ private struct DesktopScreen: View {
                     Label("Swipe up with three fingers for Mission Control. Swipe down for App windows.", systemImage: "rectangle.3.group")
                     Text("These actions use the Mac’s Control–Arrow keyboard shortcuts. You can also use the Spaces and windows menu.")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                TrunklineSection("Connection health") {
+                    Text("Turn on Connection health in Spaces and windows. Mac RTT measures the round trip to your Mac, including Away access. Frame loss shows recent missing video frames. Video target is the encoder bitrate setting, not measured data usage. A dash means no recent measurement.")
                 }
                 TrunklineSection("Physical monitors") {
                     Label("Use Displays in the toolbar to switch between connected Mac monitors. Each display keeps its own proportions.", systemImage: "display.2")

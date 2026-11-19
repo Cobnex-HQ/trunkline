@@ -8,6 +8,9 @@ import TrunklineCore
 final class MacClientConnection: ObservableObject {
     enum Phase { case disconnected, connecting, authenticating, connected }
     @Published private(set) var phase: Phase = .disconnected
+    private(set) var roundTripMS: Int?
+    private(set) var roundTripTime: TimeInterval?
+    private var pingSent: TimeInterval?
     @Published private(set) var name = "Mac"
     @Published private(set) var display = DesktopDisplay.fallback
     @Published var diagnostic = ConnectionDiagnostic()
@@ -55,6 +58,13 @@ final class MacClientConnection: ObservableObject {
                 self.diagnostic.advance(.connected)
                 self.send(.requestControls())
                 self.onMessage?(message)
+            case .pong:
+                if let sent = self.pingSent, self.phase == .connected {
+                    let now = ProcessInfo.processInfo.systemUptime
+                    self.roundTripMS = Int(max(0, now - sent) * 1000)
+                    self.roundTripTime = now
+                    self.pingSent = nil
+                }
             case let .failure(message, cause):
                 self.disconnect(reason: message); self.diagnostic.fail(cause ?? .unknown)
             default:
@@ -77,7 +87,10 @@ final class MacClientConnection: ObservableObject {
                     self.disconnect(reason: "The Mac stopped responding. Check its network and reconnect.")
                     return
                 }
-                self.send(.ping)
+                if self.phase == .connected, self.pingSent == nil {
+                    self.pingSent = ProcessInfo.processInfo.systemUptime
+                    self.send(.ping)
+                }
             }
         }
         channel.start()
@@ -88,6 +101,7 @@ final class MacClientConnection: ObservableObject {
     }
     func disconnect(reason: String? = nil) {
         generation = UUID()
+        roundTripMS = nil; roundTripTime = nil; pingSent = nil
         watchdog?.cancel()
         watchdog = nil
         channel?.onClose = nil
