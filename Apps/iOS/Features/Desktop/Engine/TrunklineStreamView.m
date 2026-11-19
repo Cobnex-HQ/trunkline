@@ -1,4 +1,4 @@
-// Modified for Trunkline; adaptation notice recorded 2026-11-17.
+// Modified for Trunkline on 2026-11-19. Preserve UIKit composition and release hardware input safely.
 // Based on Moonlight iOS 02dc9780496eeeac6d01c8bbdccb8b6fe71ef28a.
 // Original notices and licence are retained; see docs/THIRD_PARTY.md.
 //
@@ -20,6 +20,46 @@
 #import "AbsoluteTouchHandler.h"
 #import "KeyboardInputField.h"
 
+@interface StreamView (PhysicalKeyboard)
+- (BOOL)handleHardwarePress:(UIPress *)press down:(BOOL)down allowText:(BOOL)allowText;
+- (void)releaseHardwareKeys;
+- (void)retainLocalHardwarePress:(UIPress *)press;
+@end
+
+// UIKit owns text composition and layout. Only remote shortcuts/navigation are intercepted.
+@interface TrunklineKeyboardField : KeyboardInputField
+@property(nonatomic, weak) StreamView *stream;
+@property(nonatomic) BOOL hardwareText;
+@end
+@implementation TrunklineKeyboardField
+- (NSSet<UIPress *> *)unhandledHardwarePresses:(NSSet<UIPress *> *)presses down:(BOOL)down {
+    NSMutableSet *unhandled = [presses mutableCopy];
+    for (UIPress *press in presses) {
+        if (down && self.markedTextRange != nil) {
+            [self.stream retainLocalHardwarePress:press];
+        } else if ([self.stream handleHardwarePress:press down:down allowText:NO]) {
+            [unhandled removeObject:press];
+        } else if (down) {
+            [self.stream retainLocalHardwarePress:press];
+        }
+    }
+    if (down && unhandled.count) self.hardwareText = YES;
+    return unhandled;
+}
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSSet *unhandled = [self unhandledHardwarePresses:presses down:YES];
+    if (unhandled.count) [super pressesBegan:unhandled withEvent:event];
+}
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSSet *unhandled = [self unhandledHardwarePresses:presses down:NO];
+    if (unhandled.count) [super pressesEnded:unhandled withEvent:event];
+}
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    [self.stream releaseHardwareKeys];
+    [super pressesCancelled:presses withEvent:event];
+}
+@end
+
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 
 @implementation StreamView {
@@ -28,6 +68,9 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     KeyboardInputField* keyInputField;
     UIBarButtonItem *modifierMenuItem;
     NSMutableSet* keysDown;
+    NSMutableDictionary<NSNumber *, NSNumber *> *hardwareKeys;
+    NSMutableSet<NSNumber *> *hardwareTextKeys;
+    NSMutableSet<NSNumber *> *localHardwareKeys;
     
     float streamAspectRatio;
     BOOL suppressDirectTouches;
@@ -61,7 +104,12 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     TemporarySettings* settings = [[[DataManager alloc] init] getSettings];
     
     keysDown = [[NSMutableSet alloc] init];
-    keyInputField = [[KeyboardInputField alloc] initWithFrame:CGRectZero];
+    hardwareKeys = [NSMutableDictionary new]; hardwareTextKeys = [NSMutableSet new]; localHardwareKeys = [NSMutableSet new];
+    TrunklineKeyboardField *field = [[TrunklineKeyboardField alloc] initWithFrame:CGRectZero];
+    field.stream = self; keyInputField = field;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(releaseAllKeyboardKeys) name:UIApplicationWillResignActiveNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(releaseAllKeyboardKeys) name:GCKeyboardDidDisconnectNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(focusHardwareKeyboard) name:GCKeyboardDidConnectNotification object:nil];
     [keyInputField setKeyboardType:UIKeyboardTypeDefault];
     [keyInputField setAutocorrectionType:UITextAutocorrectionTypeNo];
     [keyInputField setAutocapitalizationType:UITextAutocapitalizationTypeNone];
@@ -139,6 +187,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // This is critical to ensure keyboard events are delivered to this
     // StreamView and not our parent UIView, especially on tvOS.
     [self becomeFirstResponder];
+    [self focusHardwareKeyboard];
 }
 
 - (void)startInteractionTimer {
@@ -161,6 +210,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 }
 
 - (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
     [interactionTimer invalidate];
     // Stop local timers without emitting remote input from a late destructor.
     [(id<TrunklineTouchInput>)touchHandler cancelPendingInput];
@@ -525,42 +575,95 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
 }
 
-- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-    BOOL handled = NO;
-    
-    if (@available(iOS 13.4, tvOS 13.4, *)) {
-        for (UIPress* press in presses) {
-            // For now, we'll treated it as handled if we handle at least one of the
-            // UIPress events inside the set.
-            if ([KeyboardSupport sendKeyEventForPress:press down:YES]) {
-                // This will prevent the legacy UITextField from receiving the event
-                handled = YES;
-            }
-        }
-    }
-    
-    if (!handled) {
-        [super pressesBegan:presses withEvent:event];
-    }
+- (unsigned char)hardwareModifiers:(UIKeyModifierFlags)flags {
+    unsigned char result = [self keyboardModifiers];
+    if (flags & UIKeyModifierShift) result |= MODIFIER_SHIFT;
+    if (flags & UIKeyModifierControl) result |= MODIFIER_CTRL;
+    if (flags & UIKeyModifierAlternate) result |= MODIFIER_ALT;
+    if (flags & UIKeyModifierCommand) result |= MODIFIER_META;
+    return result;
 }
-
-- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-    BOOL handled = NO;
-    
-    if (@available(iOS 13.4, tvOS 13.4, *)) {
-        for (UIPress* press in presses) {
-            // For now, we'll treated it as handled if we handle at least one of the
-            // UIPress events inside the set.
-            if ([KeyboardSupport sendKeyEventForPress:press down:NO]) {
-                // This will prevent the legacy UITextField from receiving the event
-                handled = YES;
-            }
+- (void)retainLocalHardwarePress:(UIPress *)press {
+    if (press.key) [localHardwareKeys addObject:@(press.key.keyCode)];
+}
+- (BOOL)handleHardwarePress:(UIPress *)press down:(BOOL)down allowText:(BOOL)allowText {
+    UIKey *key = press.key;
+    if (!key) return NO;
+    NSNumber *usage = @(key.keyCode);
+    // If UIKit forwards a composition event up the responder chain, do not send it twice.
+    if ([localHardwareKeys containsObject:usage]) {
+        if (!down) [localHardwareKeys removeObject:usage];
+        return allowText;
+    }
+    unsigned char modifiers = [self hardwareModifiers:key.modifierFlags];
+    if (key.keyCode == UIKeyboardHIDUsageKeypadEnter) modifiers |= MODIFIER_EXTENDED;
+    if (!down) {
+        NSNumber *held = hardwareKeys[usage];
+        if (held) {
+            [hardwareKeys removeObjectForKey:usage];
+            [self emitKeyboardKey:held.unsignedShortValue action:KEY_ACTION_UP modifiers:modifiers flags:0];
+            return YES;
         }
+        if ([hardwareTextKeys containsObject:usage]) { [hardwareTextKeys removeObject:usage]; return YES; }
+        return NO;
     }
-    
-    if (!handled) {
-        [super pressesEnded:presses withEvent:event];
+    NSNumber *mapped = [KeyboardSupport virtualKeyForHardwareKey:key];
+    if (!mapped) return NO;
+    BOOL shortcut = (modifiers & (MODIFIER_META | MODIFIER_CTRL)) != 0;
+    unsigned short code = mapped.unsignedShortValue;
+    BOOL textKey = code == 0x20 || (code >= 0x30 && code <= 0x5A) ||
+        (code >= 0x60 && code <= 0x6F) || (code >= 0xBA && code <= 0xE2);
+    BOOL printable = textKey && key.characters.length > 0 &&
+        [key.characters rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound &&
+        [key.characters rangeOfCharacterFromSet:[NSCharacterSet characterSetWithRange:NSMakeRange(0xF700, 0x200)]].location == NSNotFound;
+    if (!shortcut && printable) {
+        if (!allowText) return NO; // UITextField handles repeat, dead keys and marked text.
+        [self emitKeyboardText:key.characters];
+        [hardwareTextKeys addObject:usage];
+        return YES;
     }
+    // A dead key has no committed text. Keep it in UIKit's composition path.
+    if (!shortcut && textKey && key.characters.length == 0 && key.charactersIgnoringModifiers.length > 0) return NO;
+    if (shortcut && key.charactersIgnoringModifiers.length == 1) {
+        struct KeyEvent translated = [KeyboardSupport translateKeyEvent:[key.charactersIgnoringModifiers characterAtIndex:0] withModifierFlags:0];
+        if (translated.keycode) mapped = @(translated.keycode);
+    }
+    // Hold the original mapping until key-up, even if the active layout or modifiers change.
+    NSNumber *held = hardwareKeys[usage];
+    if (!held) { held = mapped; hardwareKeys[usage] = held; }
+    [self emitKeyboardKey:held.unsignedShortValue action:KEY_ACTION_DOWN modifiers:modifiers flags:0];
+    return YES;
+}
+- (void)releaseHardwareKeys {
+    NSArray *held = hardwareKeys.allValues;
+    [hardwareKeys removeAllObjects]; [hardwareTextKeys removeAllObjects]; [localHardwareKeys removeAllObjects];
+    for (NSNumber *key in held) [self emitKeyboardKey:key.unsignedShortValue action:KEY_ACTION_UP modifiers:0 flags:0];
+}
+- (void)focusHardwareKeyboard {
+    if (self.window && GCKeyboard.coalescedKeyboard && (self.isFirstResponder || keyInputField.isFirstResponder)) [keyInputField becomeFirstResponder];
+}
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (!self.window) [self releaseAllKeyboardKeys];
+    else if (GCKeyboard.coalescedKeyboard) [keyInputField becomeFirstResponder];
+}
+- (BOOL)resignFirstResponder {
+    [self releaseHardwareKeys];
+    return [super resignFirstResponder];
+}
+- (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSMutableSet *unhandled = [presses mutableCopy];
+    for (UIPress *press in presses) if ([self handleHardwarePress:press down:YES allowText:YES]) [unhandled removeObject:press];
+    if (unhandled.count) [super pressesBegan:unhandled withEvent:event];
+}
+- (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    NSMutableSet *unhandled = [presses mutableCopy];
+    for (UIPress *press in presses) if ([self handleHardwarePress:press down:NO allowText:YES]) [unhandled removeObject:press];
+    if (unhandled.count) [super pressesEnded:unhandled withEvent:event];
+}
+- (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
+    [self releaseHardwareKeys];
+    [super pressesCancelled:presses withEvent:event];
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
@@ -771,7 +874,9 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     [self emitKeyboardKey:0x0D action:KEY_ACTION_UP modifiers:modifiers flags:0];
     return NO;
 }
-- (void)textFieldDidEndEditing:(UITextField *)textField {
+- (void)textFieldDidEndEditing:(UITextField *)textField { [self releaseAllKeyboardKeys]; }
+- (void)releaseAllKeyboardKeys {
+    [self releaseHardwareKeys];
     // Release held modifiers when dismissed by UIKit, toolbar or stream closure.
     NSArray<NSNumber *> *held = keysDown.allObjects;
     for (NSNumber *keyCode in held) {
@@ -789,7 +894,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         [self emitKeyboardKey:0x08 action:KEY_ACTION_UP modifiers:modifiers flags:0];
     } else {
         NSString *committed = [inputText hasPrefix:@"0"] ? [inputText substringFromIndex:1] : inputText;
-        BOOL requiresUTF8 = NO;
+        BOOL requiresUTF8 = [(TrunklineKeyboardField *)textField hardwareText] && !([self keyboardModifiers] & (MODIFIER_CTRL | MODIFIER_META | MODIFIER_ALT));
         for (NSUInteger i = 0; i < committed.length; i++) {
             if ([KeyboardSupport translateKeyEvent:[committed characterAtIndex:i] withModifierFlags:0].keycode == 0) { requiresUTF8 = YES; break; }
         }
@@ -830,47 +935,26 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     return YES;
 }
 
-- (NSArray<UIKeyCommand *> *)keyCommands
-{
-    NSString *charset = @"qwertyuiopasdfghjklzxcvbnm1234567890\t§[]\\'\"/.,`<>-´ç+`¡'º;ñ= ";
-    
-    NSMutableArray<UIKeyCommand *> * commands = [NSMutableArray<UIKeyCommand *> array];
-    dictCodes = [[NSDictionary alloc] initWithObjectsAndKeys: [NSNumber numberWithInt: 0x0d], @"\r", [NSNumber numberWithInt: 0x08], @"\b", [NSNumber numberWithInt: 0x1b], UIKeyInputEscape, [NSNumber numberWithInt: 0x28], UIKeyInputDownArrow, [NSNumber numberWithInt: 0x26], UIKeyInputUpArrow, [NSNumber numberWithInt: 0x25], UIKeyInputLeftArrow, [NSNumber numberWithInt: 0x27], UIKeyInputRightArrow, nil];
-    
-    [charset enumerateSubstringsInRange:NSMakeRange(0, charset.length)
-                                options:NSStringEnumerationByComposedCharacterSequences
-                             usingBlock:^(NSString *substring, NSRange substringRange, NSRange enclosingRange, BOOL *stop) {
-                                 [commands addObject:[UIKeyCommand keyCommandWithInput:substring modifierFlags:0 action:@selector(keyPressed:)]];
-                                 [commands addObject:[UIKeyCommand keyCommandWithInput:substring modifierFlags:UIKeyModifierShift action:@selector(keyPressed:)]];
-                                 [commands addObject:[UIKeyCommand keyCommandWithInput:substring modifierFlags:UIKeyModifierControl action:@selector(keyPressed:)]];
-                                 [commands addObject:[UIKeyCommand keyCommandWithInput:substring modifierFlags:UIKeyModifierAlternate action:@selector(keyPressed:)]];
-                             }];
-    
-    for (NSString *c in [dictCodes keyEnumerator]) {
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:0
-                                                       action:@selector(specialCharPressed:)]];
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:UIKeyModifierShift
-                                                       action:@selector(specialCharPressed:)]];
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:UIKeyModifierShift | UIKeyModifierAlternate
-                                                       action:@selector(specialCharPressed:)]];
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:UIKeyModifierShift | UIKeyModifierControl
-                                                       action:@selector(specialCharPressed:)]];
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:UIKeyModifierControl
-                                                       action:@selector(specialCharPressed:)]];
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:UIKeyModifierControl | UIKeyModifierAlternate
-                                                       action:@selector(specialCharPressed:)]];
-        [commands addObject:[UIKeyCommand keyCommandWithInput:c
-                                                modifierFlags:UIKeyModifierAlternate
-                                                       action:@selector(specialCharPressed:)]];
+- (NSArray<UIKeyCommand *> *)keyCommands {
+    if (keyInputField.markedTextRange != nil) return @[];
+    // Never register bare printable keys. That bypasses UIKit's international text composition.
+    NSMutableArray<UIKeyCommand *> *commands = [NSMutableArray new];
+    for (NSString *input in @[@"a", @"c", @"v", @"x", @"z", @"s", @"f"]) {
+        UIKeyCommand *command = [UIKeyCommand keyCommandWithInput:input modifierFlags:UIKeyModifierCommand action:@selector(remoteKeyboardCommand:)];
+        command.wantsPriorityOverSystemBehavior = YES;
+        [commands addObject:command];
     }
-    
+    UIKeyCommand *redo = [UIKeyCommand keyCommandWithInput:@"z" modifierFlags:UIKeyModifierCommand | UIKeyModifierShift action:@selector(remoteKeyboardCommand:)];
+    redo.wantsPriorityOverSystemBehavior = YES; [commands addObject:redo];
     return commands;
+}
+- (void)remoteKeyboardCommand:(UIKeyCommand *)command {
+    if (command.input.length != 1) return;
+    struct KeyEvent key = [KeyboardSupport translateKeyEvent:[command.input characterAtIndex:0] withModifierFlags:0];
+    if (!key.keycode) return;
+    unsigned char modifiers = [self hardwareModifiers:command.modifierFlags];
+    [self emitKeyboardKey:key.keycode action:KEY_ACTION_DOWN modifiers:modifiers flags:0];
+    [self emitKeyboardKey:key.keycode action:KEY_ACTION_UP modifiers:modifiers flags:0];
 }
 
 - (void)connectedStateDidChangeWithIdentifier:(NSUUID * _Nonnull)identifier isConnected:(BOOL)isConnected {

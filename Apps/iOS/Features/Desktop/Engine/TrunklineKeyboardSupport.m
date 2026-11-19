@@ -1,4 +1,4 @@
-// Modified for Trunkline; adaptation notice recorded 2026-11-17.
+// Modified for Trunkline on 2026-11-19. Separate hardware translation from input delivery.
 // Based on Moonlight iOS 02dc9780496eeeac6d01c8bbdccb8b6fe71ef28a.
 // Original notices and licence are retained; see docs/THIRD_PARTY.md.
 //
@@ -9,7 +9,7 @@
 //  Copyright © 2018 Moonlight Game Streaming Project. All rights reserved.
 //
 
-#import "KeyboardSupport.h"
+#import "TrunklineStreamKeyboard.h"
 #include <Limelight.h>
 
 @implementation KeyboardSupport
@@ -64,6 +64,19 @@
         modifierFlags |= MODIFIER_META;
     }
     
+    NSNumber *mapped = [self virtualKeyForHardwareKey:key];
+    if (!mapped) return NO;
+    keyCode = mapped.shortValue;
+    if (key.keyCode == UIKeyboardHIDUsageKeypadEnter) modifierFlags |= MODIFIER_EXTENDED;
+
+    LiSendKeyboardEvent(0x8000 | keyCode,
+                        down ? KEY_ACTION_DOWN : KEY_ACTION_UP,
+                        modifierFlags);
+    return true;
+}
+
++ (NSNumber *)virtualKeyForHardwareKey:(UIKey *)key {
+    short keyCode = 0;
     // This converts UIKeyboardHIDUsage values to Win32 VK_* values
     // https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
     if (key.keyCode >= UIKeyboardHIDUsageKeyboardA &&
@@ -205,7 +218,6 @@
                 break;
             case UIKeyboardHIDUsageKeypadEnter:
                 keyCode = 0x0D;
-                modifierFlags |= MODIFIER_EXTENDED;
                 break;
             case UIKeyboardHIDUsageKeypadPeriod:
                 keyCode = 0x6E;
@@ -252,21 +264,17 @@
             case UIKeyboardHIDUsageKeyboardRightAlt:
                 keyCode = 0xA5;
                 break;
-            case 669: // This value corresponds to the "Globe" or "Language" key on most Apple branded iPad keyboards.
-                keyCode = 0x1B; // This value corresponds to "Escape", which is missing from most Apple branded iPad keyboards.
-                break;
+            case 669: // Globe belongs to iPadOS language and system shortcuts.
+                return nil;
             default:
                 NSLog(@"Unhandled HID usage: %lu", (unsigned long)key.keyCode);
                 // Unknown hardware/synthetic HID usages belong to UIKit. They
                 // are not a fatal error and must never abort a remote session.
-                return false;
+                return nil;
         }
     }
     
-    LiSendKeyboardEvent(0x8000 | keyCode,
-                        down ? KEY_ACTION_DOWN : KEY_ACTION_UP,
-                        modifierFlags);
-    return true;
+    return @(keyCode);
 }
 
 + (struct KeyEvent)translateKeyEvent:(unichar)inputChar withModifierFlags:(UIKeyModifierFlags)modifierFlags {

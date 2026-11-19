@@ -380,6 +380,58 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertNil(controller.tableView(controller.tableView, trailingSwipeActionsConfigurationForRowAt: IndexPath(row: 1, section: 0)), "A stopping session must not offer another kill action")
     }
 
+    func testHardwareTerminalFunctionKeysAndModifiedArrows() {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        let output = TerminalInputRecorder()
+        terminal.terminalDelegate = output
+        for (usage, flags) in [(UIKeyboardHIDUsage.keyboardF10, UIKeyModifierFlags()), (.keyboardF12, []), (.keyboardUpArrow, [.control, .shift])] {
+            let key = TerminalFixtureKey(); key.usage = usage; key.flags = flags
+            let press = TerminalFixturePress(); press.fixtureKey = key
+            terminal.pressesBegan([press], with: nil)
+            terminal.pressesEnded([press], with: nil)
+        }
+        XCTAssertEqual(Array(output.bytes), Array("\u{1b}[21~\u{1b}[24~\u{1b}[1;6A".utf8))
+    }
+    func testCancelledHardwareTerminalPressStopsRepeating() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        let output = TerminalInputRecorder()
+        terminal.terminalDelegate = output
+        let key = TerminalFixtureKey(); key.usage = .keyboardDownArrow
+        let press = TerminalFixturePress(); press.fixtureKey = key
+        terminal.pressesBegan([press], with: nil)
+        terminal.pressesCancelled([press], with: nil)
+        let count = output.bytes.count
+        try await Task.sleep(for: .milliseconds(650))
+        XCTAssertEqual(output.bytes.count, count)
+    }
+
+    func testHardwareTerminalControlUsesLayoutAndUnicodeStaysIntact() {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        let output = TerminalInputRecorder()
+        terminal.terminalDelegate = output
+        let key = TerminalFixtureKey(); key.usage = .keyboardQ; key.flags = .control; key.text = "a"
+        let press = TerminalFixturePress(); press.fixtureKey = key
+        terminal.pressesBegan([press], with: nil)
+        terminal.pressesEnded([press], with: nil)
+        terminal.insertText("é界")
+        XCTAssertEqual(output.bytes, [1] + Array("é界".utf8))
+    }
+    func testReleasingModifierDoesNotStopRepeatingTerminalArrow() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
+        let output = TerminalInputRecorder()
+        terminal.terminalDelegate = output
+        let arrow = TerminalFixtureKey(); arrow.usage = .keyboardDownArrow
+        let held = TerminalFixturePress(); held.fixtureKey = arrow
+        terminal.pressesBegan([held], with: nil)
+        let modifier = TerminalFixtureKey(); modifier.usage = .keyboardLeftShift
+        let released = TerminalFixturePress(); released.fixtureKey = modifier
+        terminal.pressesEnded([released], with: nil)
+        let count = output.bytes.count
+        try await Task.sleep(for: .milliseconds(550))
+        terminal.pressesCancelled([held], with: nil)
+        XCTAssertGreaterThan(output.bytes.count, count)
+    }
+
     func testTerminalSelectionSurvivesOutputWhenApplicationDoesNotRequestMouse() {
         let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 400), font: nil)
         terminal.feed(text: "Choose an option\r\n1. Continue\r\n2. Cancel\r\n")
@@ -1638,4 +1690,18 @@ private final class RecognizedWorkspaceSwipe: UISwipeGestureRecognizer {
         get { reportedState }
         set { reportedState = newValue }
     }
+}
+
+@MainActor private final class TerminalFixtureKey: UIKey {
+    var usage: UIKeyboardHIDUsage = .keyboardA
+    var flags: UIKeyModifierFlags = []
+    var text = ""
+    override var keyCode: UIKeyboardHIDUsage { usage }
+    override var modifierFlags: UIKeyModifierFlags { flags }
+    override var characters: String { text }
+    override var charactersIgnoringModifiers: String { text }
+}
+@MainActor private final class TerminalFixturePress: UIPress {
+    var fixtureKey: UIKey?
+    override var key: UIKey? { fixtureKey }
 }

@@ -17,7 +17,7 @@ Trunkline’s adapted client files retain upstream copyrights and dated modifica
 | Adaptation | Change |
 | --- | --- |
 | Absolute/relative touch, controller and on-screen controls | Non-owning view/delegate references, direct finger targets and timer cleanup |
-| `TrunklineStreamView.m` | Weak delegate and timer references |
+| `TrunklineStreamView.m` and `TrunklineKeyboardSupport.m` | Weak references, native text composition, layout-aware shortcuts and hardware-key release on cancellation |
 | `TrunklineDataManager.m` | Initialise the settings ID so saving direct-touch mode succeeds |
 | `Engines/Client/TrunklineInputStream.c` | Coalesce movement only between button events, preserving tap and drag targets |
 | `TrunklineVideoDecoderRenderer.m` | Keep video running during UIKit gestures and recover from unsupported codecs |
@@ -34,7 +34,7 @@ The local `iOSAccessoryView.swift` adaptation changes its toggle icon and access
 
 `Engines/Terminal/TrunklineKittyGraphics.swift` replaces the pinned graphics parser at build time. On iOS it rejects file, temporary-file and shared-memory transports. A remote terminal may send inline graphics, but cannot use this protocol to read or delete companion files. Original notices remain intact.
 
-`TrunklineIOSTerminalView.swift` preserves the reader’s native scroll position when new output arrives. It follows output only when already at the bottom. Both adapted files replace their pinned originals in `project.yml`.
+`TrunklineIOSTerminalView.swift` preserves the reader’s native scroll position when new output arrives. It follows output only when already at the bottom. The terminal input adaptation also fixes function keys, modifier arrows and cancelled hardware-key repeats. Both adapted files replace their pinned originals in `project.yml`.
 
 The framework builds selected native sources, including the Mac-directory AccessibilityService stub needed on iOS. Debug settings disable example previews without vendor edits. Upstream API deprecation warnings still need an upgrade and regression check before production.
 

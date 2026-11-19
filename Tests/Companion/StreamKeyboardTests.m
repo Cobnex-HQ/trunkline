@@ -106,12 +106,26 @@
 
 @interface FixtureHardwareKey : UIKey
 @property(nonatomic) UIKeyboardHIDUsage usage;
+@property(nonatomic) UIKeyModifierFlags flags;
+@property(nonatomic, copy) NSString *text;
+@property(nonatomic, copy) NSString *plain;
 @end
 @implementation FixtureHardwareKey
 - (UIKeyboardHIDUsage)keyCode { return self.usage; }
-- (UIKeyModifierFlags)modifierFlags { return 0; }
-- (NSString *)characters { return @""; }
-- (NSString *)charactersIgnoringModifiers { return @""; }
+- (UIKeyModifierFlags)modifierFlags { return self.flags; }
+- (NSString *)characters { return self.text ?: @""; }
+- (NSString *)charactersIgnoringModifiers { return self.plain ?: self.text ?: @""; }
+@end
+
+@interface FixtureHardwarePress : UIPress
+@property(nonatomic, strong) UIKey *fixtureKey;
+@end
+@implementation FixtureHardwarePress
+- (UIKey *)key { return self.fixtureKey; }
+@end
+
+@interface UITextField (HardwareRoutingFixture)
+- (NSSet<UIPress *> *)unhandledHardwarePresses:(NSSet<UIPress *> *)presses down:(BOOL)down;
 @end
 
 @interface FixtureStreamOwner : NSObject <UserInteractionDelegate, ControllerSupportDelegate>
@@ -414,9 +428,90 @@
     XCTAssertEqual(views.allObjects.count, 0u, @"Opening and closing viewers must not retain each stream input view");
 }
 
+- (FixtureHardwarePress *)pressWithUsage:(UIKeyboardHIDUsage)usage text:(NSString *)text flags:(UIKeyModifierFlags)flags {
+    FixtureHardwareKey *key = [FixtureHardwareKey new]; key.usage = usage; key.text = text; key.flags = flags;
+    FixtureHardwarePress *press = [FixtureHardwarePress new]; press.fixtureKey = key;
+    return press;
+}
+- (void)testHardwareTextUsesTheClientLayoutWithoutDuplicateKeyUps {
+    RecordingStreamView *view = [self streamView];
+    for (NSString *text in @[@"a", @"é", @"界"]) {
+        FixtureHardwarePress *press = [self pressWithUsage:UIKeyboardHIDUsageKeyboardQ text:text flags:0];
+        [view pressesBegan:[NSSet setWithObject:press] withEvent:nil];
+        [view pressesEnded:[NSSet setWithObject:press] withEvent:nil];
+    }
+    XCTAssertEqualObjects(view.texts, (@[@"a", @"é", @"界"]));
+    XCTAssertEqual(view.events.count, 0u);
+}
+- (void)testHardwareShortcutReleasesTheOriginalKeyAfterModifiersChange {
+    RecordingStreamView *view = [self streamView];
+    FixtureHardwarePress *press = [self pressWithUsage:UIKeyboardHIDUsageKeyboardQ text:@"a" flags:UIKeyModifierCommand | UIKeyModifierShift];
+    [view pressesBegan:[NSSet setWithObject:press] withEvent:nil];
+    FixtureHardwareKey *key = (FixtureHardwareKey *)press.key;
+    key.flags = 0; key.text = @"q";
+    [view pressesEnded:[NSSet setWithObject:press] withEvent:nil];
+    XCTAssertEqualObjects(view.events, (@[@[@0x41, @3, @9, @0], @[@0x41, @4, @0, @0]]));
+}
+- (void)testHardwareCancellationReleasesKeysOnce {
+    RecordingStreamView *view = [self streamView];
+    FixtureHardwarePress *command = [self pressWithUsage:UIKeyboardHIDUsageKeyboardLeftGUI text:@"" flags:UIKeyModifierCommand];
+    FixtureHardwarePress *letter = [self pressWithUsage:UIKeyboardHIDUsageKeyboardC text:@"c" flags:UIKeyModifierCommand];
+    [view pressesBegan:[NSSet setWithObject:command] withEvent:nil];
+    [view pressesBegan:[NSSet setWithObject:letter] withEvent:nil];
+    [view pressesCancelled:[NSSet setWithObjects:command, letter, nil] withEvent:nil];
+    XCTAssertEqual(view.events.count, 4u);
+    XCTAssertEqual([view.events[2][1] intValue], KEY_ACTION_UP);
+    XCTAssertEqual([view.events[3][1] intValue], KEY_ACTION_UP);
+    [view pressesCancelled:[NSSet setWithObjects:command, letter, nil] withEvent:nil];
+    XCTAssertEqual(view.events.count, 4u);
+}
+- (void)testHardwareShortcutsReachTheMacWhenTextFieldHasFocus {
+    RecordingStreamView *view = [self streamView];
+    UITextField *field = [self fieldInView:view];
+    FixtureHardwarePress *press = [self pressWithUsage:UIKeyboardHIDUsageKeyboardC text:@"c" flags:UIKeyModifierCommand];
+    [field pressesBegan:[NSSet setWithObject:press] withEvent:nil];
+    [field pressesEnded:[NSSet setWithObject:press] withEvent:nil];
+    XCTAssertEqualObjects(view.events, (@[@[@0x43, @3, @8, @0], @[@0x43, @4, @8, @0]]));
+}
+- (void)testHardwareTextFieldPreservesLayoutText {
+    RecordingStreamView *view = [self streamView];
+    UITextField *field = [self fieldInView:view];
+    FixtureHardwarePress *press = [self pressWithUsage:UIKeyboardHIDUsageKeyboardQ text:@"a" flags:0];
+    XCTAssertEqual([field unhandledHardwarePresses:[NSSet setWithObject:press] down:YES].count, 1u);
+    field.text = @"0a"; [field sendActionsForControlEvents:UIControlEventEditingChanged];
+    XCTAssertEqual([field unhandledHardwarePresses:[NSSet setWithObject:press] down:NO].count, 1u);
+    XCTAssertEqualObjects(view.texts, (@[@"a"]));
+    XCTAssertEqual(view.events.count, 0u);
+    for (UIKeyCommand *command in view.keyCommands) XCTAssertTrue((command.modifierFlags & UIKeyModifierCommand) != 0, @"Bare keys must remain in UIKit's composition path");
+}
+- (void)testNumpadEnterAndNavigationRemainPhysicalKeys {
+    RecordingStreamView *view = [self streamView];
+    for (FixtureHardwarePress *press in @[
+        [self pressWithUsage:UIKeyboardHIDUsageKeypadEnter text:@"\r" flags:0],
+        [self pressWithUsage:UIKeyboardHIDUsageKeyboardLeftArrow text:UIKeyInputLeftArrow flags:UIKeyModifierAlternate]]) {
+        [view pressesBegan:[NSSet setWithObject:press] withEvent:nil];
+        [view pressesEnded:[NSSet setWithObject:press] withEvent:nil];
+    }
+    XCTAssertEqualObjects(view.events, (@[@[@0x0D, @3, @(MODIFIER_EXTENDED), @0], @[@0x0D, @4, @(MODIFIER_EXTENDED), @0],
+                                        @[@0x25, @3, @(MODIFIER_ALT), @0], @[@0x25, @4, @(MODIFIER_ALT), @0]]));
+    XCTAssertEqual(view.texts.count, 0u);
+}
+- (void)testMarkedTextKeepsHardwareNavigationInUIKit {
+    RecordingStreamView *view = [self streamView];
+    UITextField *field = [self fieldInView:view];
+    field.selectedTextRange = [field textRangeFromPosition:field.endOfDocument toPosition:field.endOfDocument];
+    [field setMarkedText:@"拼" selectedRange:NSMakeRange(1, 0)];
+    XCTAssertNotNil(field.markedTextRange);
+    FixtureHardwarePress *press = [self pressWithUsage:UIKeyboardHIDUsageKeyboardEscape text:@"\x1b" flags:0];
+    XCTAssertEqual([field unhandledHardwarePresses:[NSSet setWithObject:press] down:YES].count, 1u);
+    // Model UIKit forwarding an unconsumed event to its containing stream view.
+    [view pressesBegan:[NSSet setWithObject:press] withEvent:nil];
+    XCTAssertEqual([field unhandledHardwarePresses:[NSSet setWithObject:press] down:NO].count, 1u);
+    XCTAssertEqual(view.events.count, 0u, @"IME candidate navigation/cancellation belongs to UIKit until committed");
+}
 - (void)testUnknownHardwareUsageReturnsToUIKitWithoutCrashing {
     FixtureHardwareKey *key = [FixtureHardwareKey new];
-    for (NSNumber *usage in @[@0, @65535]) {
+    for (NSNumber *usage in @[@0, @669, @65535]) {
         key.usage = usage.integerValue;
         XCTAssertFalse([KeyboardSupport sendKeyEvent:key down:YES]);
         XCTAssertFalse([KeyboardSupport sendKeyEvent:key down:NO]);

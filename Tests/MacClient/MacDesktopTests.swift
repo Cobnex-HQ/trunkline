@@ -1,9 +1,22 @@
 import XCTest
 import AppKit
+import TrunklineCore
 @testable import TrunklineHost
 
 @MainActor
 final class MacDesktopTests: XCTestCase {
+    func testConnectionHealthControlHasAVisibleSize() throws {
+        let controller = MacDesktopWindow(engine: RecordingMacEngine(), name: "Fixture", size: .init(width: 1280, height: 720))
+        controller.configureHealth {
+            ConnectionHealth(now: 10, roundTripMS: 25, roundTripTime: 10, frameLoss: 0.01, videoTime: 10, videoKbps: 12000, route: .away)
+        }
+        defer { controller.close() }
+        let button = try XCTUnwrap(controller.window?.titlebarAccessoryViewControllers.first?.view as? NSButton)
+        XCTAssertGreaterThan(button.frame.width, 40)
+        XCTAssertGreaterThan(button.frame.height, 15)
+        XCTAssertEqual(button.title, "Connection health")
+    }
+
     func testMouseMapsToVideoAndReleasesOutsideThePicture() throws {
         let engine = RecordingMacEngine()
         let view = MacDesktopView(engine: engine, aspect: 2)

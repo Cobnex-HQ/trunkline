@@ -526,6 +526,10 @@ private struct DesktopScreen: View {
                     Text("These actions use the Mac’s Control–Arrow keyboard shortcuts. You can also use the Spaces and windows menu.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                TrunklineSection("Hardware keyboards") {
+                    Text("Type using your iPhone or iPad keyboard layout. Open Keyboard for dead-key or input-method composition.")
+                    Text("Command-C, V, X, A, Z, S and F go to the Mac. Shift-Command-Z sends Redo. Globe and system shortcuts remain with iPadOS. Use the Shortcuts menu for combinations iPadOS reserves.")
+                }
                 TrunklineSection("Connection health") {
                     Text("Turn on Connection health in Spaces and windows. Mac RTT measures the round trip to your Mac, including Away access. Frame loss shows recent missing video frames. Video target is the encoder bitrate setting, not measured data usage. A dash means no recent measurement.")
                 }

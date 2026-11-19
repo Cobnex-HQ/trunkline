@@ -1,4 +1,4 @@
-// Modified for Trunkline on 2026-11-18. Preserve scrollback and the live prompt during viewport resizing.
+// Modified for Trunkline on 2026-11-19. Preserve scrollback, viewport resizing and hardware-key cancellation.
 // Based on SwiftTerm b1262db5b6bea699a8260a8c66999436c508ca56. Original MIT notices retained.
 //
 //  iOSTerminalView.swift
@@ -1490,19 +1490,21 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             caretView?.updateView()
             keyRepeat?.invalidate()
             keyRepeat = nil
+            repeatingHardwareKey = nil
 
             terminalAccessory?.cancelTimer()
         }
         return code
     }
     var keyRepeat: Timer?
+    private var repeatingHardwareKey: UIKeyboardHIDUsage?
 
     /// It looks like sending carriage return works on Unix and Windows remote hosts, so add that, but keeping a public
     /// property in case someone needs the return key to send different sequences.
     public var returnByteSequence: [UInt8] = [13]
 
     public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        var didHandleEvent = false
+        var unhandled = presses
 
         if _markedTextRange != nil {
             super.pressesBegan(presses, with: event)
@@ -1612,10 +1614,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             case .keyboardF9:
                 data = .bytes (EscapeSequences.cmdF [8])
             case .keyboardF10:
-                data = .bytes (EscapeSequences.cmdF [8])
+                data = .bytes (EscapeSequences.cmdF [9])
             case .keyboardF11:
                 data = .bytes (EscapeSequences.cmdF [10])
-            case .keyboardF12, .keyboardF13, .keyboardF14, .keyboardF15, .keyboardF16,
+            case .keyboardF12:
+                data = .bytes (EscapeSequences.cmdF [11])
+            case .keyboardF13, .keyboardF14, .keyboardF15, .keyboardF16,
                  .keyboardF17, .keyboardF18, .keyboardF19, .keyboardF20, .keyboardF21,
                  .keyboardF22, .keyboardF23, .keyboardF24:
                 break
@@ -1635,8 +1639,20 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                     }
                 }
             }
+            // xterm modifier parameter: 1 + Shift + 2*Option + 4*Control.
+            // Unmodified arrows retain the remote app's normal/application cursor mode.
+            let modifiers = key.modifierFlags
+            let modifier = 1 + (modifiers.contains(.shift) ? 1 : 0) + (modifiers.contains(.alternate) ? 2 : 0) + (modifiers.contains(.control) ? 4 : 0)
+            let arrows: [UIKeyboardHIDUsage: String] = [.keyboardUpArrow: "A", .keyboardDownArrow: "B", .keyboardRightArrow: "C", .keyboardLeftArrow: "D"]
+            if modifier > 1, let suffix = arrows[key.keyCode] {
+                // Preserve the existing Option-only word movement shortcuts.
+                if !(modifier == 3 && (key.keyCode == .keyboardLeftArrow || key.keyCode == .keyboardRightArrow)) {
+                    data = .text("\u{1b}[1;\(modifier)\(suffix)")
+                }
+            }
             if let sendableData = data {
-                didHandleEvent = true
+                unhandled.remove(press)
+                repeatingHardwareKey = key.keyCode
                 keyRepeat?.invalidate()
                 keyRepeat = Timer (fire: Date(timeInterval: 0.4, since: Date()),
                                    interval: 0.1,
@@ -1647,15 +1663,24 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 sendData (data: sendableData)
             }
         }
-        if didHandleEvent == false {
-            super.pressesBegan(presses, with: event)
+        if !unhandled.isEmpty {
+            super.pressesBegan(unhandled, with: event)
         }
     }
 
     public override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.key?.keyCode == repeatingHardwareKey }) {
+            keyRepeat?.invalidate()
+            keyRepeat = nil
+            repeatingHardwareKey = nil
+        }
+        super.pressesEnded(presses, with: event)
+    }
+    public override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         keyRepeat?.invalidate()
         keyRepeat = nil
-        super.pressesEnded(presses, with: event)
+        repeatingHardwareKey = nil
+        super.pressesCancelled(presses, with: event)
     }
 
     var pendingSelectionChanged = false

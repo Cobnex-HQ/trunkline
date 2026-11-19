@@ -180,3 +180,12 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - The same native SwiftUI overlay is used on iPhone, iPad and Mac. Measurements use end-to-end companion RTT, recent video-frame loss and the encoder bitrate target. Local proxy RTT is not presented as Away latency.
 - Screenshot checks cover the iPhone and iPad viewer in portrait and landscape, including keeping the keyboard control hittable. Missing samples display dashes.
 - No real WAN performance measurement or physical-device installation was performed in this change.
+
+## Hardware keyboards and final feature regression — 2026-11-19
+
+- iPhone and iPad simulators: 102 companion tests passed on each device. These include reconnect, resumable files, pointer targeting, gestures, terminal resizing, keyboard focus and the new hardware-input cases.
+- Keyboard regressions cover client-layout text, Command/Shift key-up matching, cancellation, keypad Enter, navigation, UIKit composition routing, function keys, Control chords, modified arrows and repeat cleanup.
+- A synthetic UIKit press sent directly into a detached text field caused UIKit recursion in the test fixture. Composition tests now exercise the production routing boundary, then its committed-text callback. They do not pretend to emulate UIKit’s private event dispatcher.
+- Full development suite: 137 Core tests, 36 tooling tests and 14 Rust tests passed. Native input-ordering checks passed. Mac app: 7 tests passed, 1 opt-in live-stream test skipped, including a visible-size check for the connection-health control.
+- iPhone/iPad health-overlay screenshots passed in portrait and landscape. Hardware-keyboard tests preserve existing software-keyboard, touch and orientation coverage.
+- Physical keyboard, IME and device-approval acceptance still need testing on signed installed builds. These four features are committed locally. They have not been pushed or installed on physical devices.

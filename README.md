@@ -133,3 +133,11 @@ Revocation disconnects the current device and clears all desktop-stream pairings
 In the iPhone or iPad desktop, open **Spaces and windows → Connection health**. In the Mac desktop window, use **Connection health** in the title bar.
 
 The overlay shows the current local or direct Away route, end-to-end Mac round-trip time, recent video frame loss and the video bitrate target. The target is an encoder setting, not measured network usage. Missing or stale samples show a dash. Detailed engine statistics remain available separately on iPhone and iPad.
+
+### Hardware keyboards on iPhone and iPad
+
+Desktop text uses the device’s keyboard layout. Open **Keyboard** for dead keys and input-method composition. Command-C/V/X/A/Z/S/F and Shift-Command-Z are sent to the Mac. Navigation keys and held modifiers are released when input is cancelled or the keyboard disconnects. Globe and system-reserved shortcuts stay with iPadOS. Use the desktop Shortcuts menu for unavailable combinations.
+
+The terminal supports Control chords, modified arrows and F1–F12. Text and composition use UIKit. Releasing a modifier no longer stops an arrow that is still held, and cancellation stops key repeat.
+
+Developers: text follows [UIKit’s key characters](https://developer.apple.com/documentation/uikit/uikey), and input cleanup follows [press cancellation](https://developer.apple.com/documentation/uikit/uiresponder/pressescancelled(_:with:)). The adapted upstream files and their credits are listed in [third-party notices](docs/THIRD_PARTY.md).
