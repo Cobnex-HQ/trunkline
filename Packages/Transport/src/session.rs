@@ -39,6 +39,9 @@ pub(crate) async fn run(config: DeviceConfig, helper: Multiaddr, host: bool) -> 
     let mut attempts: u32 = 0;
     let mut tick = tokio::time::interval(Duration::from_millis(200));
     emit("session_starting", json!({"host":host,"direct_only":true}));
+    // Keep the listener registered across select iterations. Recreating
+    // ctrl_c() can lose a signal between dropping and resubscribing.
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     loop {
         tokio::select! {
             _=tick.tick()=>{
@@ -60,7 +63,7 @@ pub(crate) async fn run(config: DeviceConfig, helper: Multiaddr, host: bool) -> 
                     else if !host && direct.is_empty() && relayed.is_empty() {let _=swarm.dial(helper.clone().with(Protocol::P2pCircuit).with(Protocol::P2p(expected)));}
                 }
             },
-            _=tokio::signal::ctrl_c()=>break,
+            _=interrupt.recv()=>break,
             Some((peer,stream))=async {match incoming.as_mut(){Some(s)=>s.next().await,None=>std::future::pending().await}}=>{
                 if peer==expected && flows.len()<64 {flows.spawn(async move{if let Err(e)=serve_stream(stream).await {emit("service_closed",json!({"reason":e.to_string()}));}});}
             },

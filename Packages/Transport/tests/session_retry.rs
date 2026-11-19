@@ -89,36 +89,39 @@ fn unreachable_helper_backs_off_and_exits_without_manual_cancellation() {
 
 #[test]
 fn cancellation_stops_backoff_without_waiting_for_the_deadline() {
-    let (mut session, rx) = offline_session("dial");
-    loop {
-        let (_, line) = rx.recv_timeout(Duration::from_secs(3)).unwrap();
-        let event: serde_json::Value = serde_json::from_str(&line).unwrap();
-        if event["event"] == "setup_retry" {
-            break;
-        }
-    }
-    assert!(
-        Command::new("kill")
-            .args(["-INT", &session.child.id().to_string()])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            Ok((_, line)) => {
-                let event: serde_json::Value = serde_json::from_str(&line).unwrap();
-                assert_ne!(
-                    event["event"], "setup_attempt",
-                    "Cancellation started another retry"
-                );
+    // Repeat the event-loop boundary where a replaced SIGINT listener lost cancellation.
+    for _ in 0..8 {
+        let (mut session, rx) = offline_session("dial");
+        loop {
+            let (_, line) = rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            let event: serde_json::Value = serde_json::from_str(&line).unwrap();
+            if event["event"] == "setup_retry" {
+                break;
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            Err(_) => panic!("Cancellation left the worker running"),
         }
+        assert!(
+            Command::new("kill")
+                .args(["-INT", &session.child.id().to_string()])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok((_, line)) => {
+                    let event: serde_json::Value = serde_json::from_str(&line).unwrap();
+                    assert_ne!(
+                        event["event"], "setup_attempt",
+                        "Cancellation started another retry"
+                    );
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(_) => panic!("Cancellation left the worker running"),
+            }
+        }
+        assert!(session.child.wait().unwrap().success());
     }
-    assert!(session.child.wait().unwrap().success());
 }
 
 #[test]

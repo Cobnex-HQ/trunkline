@@ -182,11 +182,14 @@ pub(crate) async fn run(args: Args) -> Result<bool> {
     let mut reservation_listeners = Vec::new();
     let mut helper_disconnected = false;
     let mut cancellation_tick = tokio::time::interval(Duration::from_millis(100));
+    // Keep the listener registered across select iterations. Recreating
+    // ctrl_c() can lose a signal between dropping and resubscribing.
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     loop {
         tokio::select! {
             _=cancellation_tick.tick()=>if crate::native::cancelled(){break;},
             _=&mut deadline=>break,
-            _=tokio::signal::ctrl_c()=>break,
+            _=interrupt.recv()=>break,
             event=swarm.select_next_some()=>match event {
                 SwarmEvent::Behaviour(ClientEvent::Identify(identify::Event::Received{peer_id,info,..}))=>{
                     identified+=1;
