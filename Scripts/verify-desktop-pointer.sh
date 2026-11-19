@@ -27,3 +27,7 @@ clang++ -std=c++23 -I "$source_root/src" Tests/Native/DisplayChangeCheck.cpp \
 clang++ -std=c++23 -I "$source_root/src" Tests/Native/DesktopSelectionCheck.cpp \
     -o .build/desktop-selection-check
 .build/desktop-selection-check
+
+clang++ -std=c++23 -I "$source_root/src" Tests/Native/AdaptiveQualityCheck.cpp \
+    -o .build/adaptive-quality-check
+.build/adaptive-quality-check

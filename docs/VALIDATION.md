@@ -132,3 +132,11 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Passed 85 companion tests on each simulator, including two simultaneous local fixture connections, backgrounding one window, clipboard acknowledgments and native engine ownership. Shared Swift, tooling and Rust suites passed. An additional clipboard focus regression passed after reproducing the overwrite.
 - Terminal, Controls and passcode portrait → landscape → portrait UI tests passed on both simulators. Reviewed iPhone terminal and iPad controls captures.
 - Physical Stage Manager, two real Macs, clipboard privacy prompts and reconnecting a desktop after closing another window remain acceptance checks. No device installation or public release is claimed by these checks.
+
+## Adaptive streaming — 2026-11-19
+
+- The iPhone/iPad viewer samples fresh video-frame loss every two seconds. Repeated loss reduces bitrate, with a ten-second cooldown. Twenty healthy seconds allow gradual recovery up to the chosen quality limit. Missing, stale or invalid samples cannot raise quality. Loopback RTT is not used.
+- A session-bound, authenticated host API controls the VideoToolbox encoder. Bitrate changes recreate the encoder between frames while retaining capture, transport, input and resolution. An encoder failure restores the negotiated limit and disables adaptation. Older hosts receive no new commands.
+- An isolated live host/client test on Apple silicon lowered and restored bitrate, verified the host’s bitrate cap, applied bitrate and continued frame delivery, and reported no playback failure. This does not measure sustained latency, packet-loss recovery on a real cellular route, thermals or battery use.
+- Passed 114 shared Swift tests, 36 tooling tests, 14 Rust tests, 86 companion tests on each simulator and the native capture/input/display/quality checks. The engine patch compiled and the staged bundle passed runtime dependency audit.
+- Mac client automatic adaptation is not yet wired to video-loss telemetry. It can use the same patched host, but its current quality selection stays manual.

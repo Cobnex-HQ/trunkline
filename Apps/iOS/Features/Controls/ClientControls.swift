@@ -7,6 +7,7 @@ import Combine
 @MainActor
 final class ClientControls: ObservableObject {
     @Published private(set) var snapshot: MacControlSnapshot?
+    @Published private(set) var lastResult: MacControlResult?
     @Published private(set) var pending: UUID?
     @Published var error: String?
     @Published private(set) var refreshError: String?
@@ -62,6 +63,12 @@ final class ClientControls: ObservableObject {
     }
     func perform(_ action: MacControlAction, confirmed: Bool = false) {
         guard pending == nil else { return }
+        if case let .desktopBitrate(session, kbps) = action {
+            guard let quality = snapshot?.desktopQuality, quality.isAvailable,
+                  quality.session == session, kbps <= quality.maximum else {
+                error = "Adaptive quality is unavailable for this desktop."; return
+            }
+        }
         if case .keepAwake = action {
             guard let awake = snapshot?.keepAwake, !awake.requiresLocalChange else {
                 error = "Keep-awake controls are unavailable. Update the Mac app or check its Power settings."
@@ -99,6 +106,7 @@ final class ClientControls: ObservableObject {
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
             guard let self, self.pending == request.id else { return }
             self.pending = nil; self.error = "The Mac didn’t confirm this action. Refresh before trying again."
+            self.lastResult = MacControlResult(id: request.id, error: self.error)
         }
         send?(.control(request))
     }
@@ -123,7 +131,7 @@ final class ClientControls: ObservableObject {
             return true
         case let .controlResult(result):
             guard result.id == pending else { return true }
-            timeout?.cancel(); timeout = nil; pending = nil; error = result.error
+            timeout?.cancel(); timeout = nil; pending = nil; error = result.error; lastResult = result
             refresh(); return true
         default: return false
         }
@@ -133,6 +141,6 @@ final class ClientControls: ObservableObject {
         refreshTimeout?.cancel(); refreshTimeout = nil
         isRefreshing = false; isUserRefreshing = false; refreshError = nil
         refreshID = nil; selectedWindowAppPID = nil; queuedWindowRefresh = false; expandedWindowList = false
-        pending = nil; snapshot = nil; error = nil
+        pending = nil; snapshot = nil; error = nil; lastResult = nil
     }
 }

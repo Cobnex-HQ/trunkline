@@ -19,6 +19,7 @@ final class DesktopSession: ObservableObject {
     @Published var inputMode: DesktopInputMode = .directTouch
     @Published var pacing: StreamPacingMode = .lowLatency
     @Published var stats = false
+    @Published var adaptiveQuality = true
     private(set) var engine: TrunklineStream
     private let engineFactory: () -> TrunklineStream
     private let discoveryTimeout: Duration
@@ -217,10 +218,11 @@ struct DesktopView: View {
                 }
                 TrunklineSection {
                     Picker("Input", selection: $desktop.inputMode) { ForEach(DesktopInputMode.allCases) { Text($0.title).tag($0) } }
-                    Picker("Quality", selection: $desktop.profile) { ForEach(StreamProfile.allCases) { Text($0.title).tag($0) } }
+                    Toggle("Adapt to network", isOn: $desktop.adaptiveQuality)
+                    Picker("Quality limit", selection: $desktop.profile) { ForEach(StreamProfile.allCases) { Text($0.title).tag($0) } }
                     LabeledContent("Connection", value: model.useAwayAccess ? "Direct · Away" : "Local Wi-Fi")
                 } header: { Text("Stream") } footer: {
-                    Text("Pinch to zoom. Use two fingers to pan when zoomed.")
+                    Text("Pinch to zoom. Use two fingers to pan when zoomed. Adaptive quality adjusts bandwidth up to your quality limit when the Mac supports it.")
                 }
                 TrunklineSection("Appearance") { AppearancePicker() }
             }
@@ -273,7 +275,7 @@ struct DesktopView: View {
                 }.presentationDetents([.medium, .large])
             }
             .fullScreenCover(isPresented: $desktop.presenting, onDismiss: { desktop.stream = nil }) {
-                if let config = desktop.stream { DesktopScreen(engine: desktop.engine, config: config, model: model) { desktop.presenting = false } }
+                if let config = desktop.stream { DesktopScreen(engine: desktop.engine, config: config, model: model, adaptive: desktop.adaptiveQuality) { desktop.presenting = false } }
             }
         }
     }
@@ -302,7 +304,9 @@ private struct DesktopScreen: View {
     let engine: TrunklineStream
     let config: StreamConfiguration
     @ObservedObject var model: ConnectionModel
+    var adaptive = true
     let close: () -> Void
+    @StateObject private var quality = AdaptiveDesktopQuality()
     @SwiftUI.State private var showControls = false
     @SwiftUI.State private var showGestures = false
     @Environment(\.scenePhase) private var scenePhase
@@ -367,6 +371,17 @@ private struct DesktopScreen: View {
                 do { try await Task.sleep(for: .seconds(5)) } catch { break }
             }
         }
+        .task(id: scenePhase) {
+            guard adaptive, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                if let sample = TrunklineDesktopNetworkSample(), let time = sample["time"], let loss = sample["loss"] {
+                    quality.observe(controls: model.controls, ceiling: Int(config.bitRate),
+                                    loss: loss.doubleValue, sampleTime: time.doubleValue, now: CACurrentMediaTime())
+                }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
+        }
+        .onReceive(model.controls.$lastResult) { quality.receive($0) }
         .sheet(isPresented: $showGestures) { gestureHelp }
         .onChange(of: controller) { _, _ in updateDisplayGeometry(model.controls.snapshot) }
         .onReceive(model.controls.$snapshot) { snapshot in updateDisplayGeometry(snapshot) }
@@ -472,6 +487,10 @@ private struct DesktopScreen: View {
         }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
     @ViewBuilder private var shortcutCommands: some View {
+            if adaptive, let state = model.controls.snapshot?.desktopQuality {
+                if state.failed { Text("Adaptive quality paused") }
+                else if state.applied > 0 { Text("Video: \(state.applied / 1000) Mbps") }
+            }
             Button("Send text…") { paste = true }
             Menu("Editing") {
                 key("Copy", 0x43, 0x08); key("Paste", 0x56, 0x08); key("Cut", 0x58, 0x08)

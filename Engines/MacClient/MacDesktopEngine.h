@@ -3,6 +3,7 @@
 NS_ASSUME_NONNULL_BEGIN
 @interface MacDesktopEngine : NSObject
 @property(nonatomic, readonly) AVSampleBufferDisplayLayer *displayLayer;
+@property(nonatomic, readonly) uint64_t submittedVideoFrames;
 @property(nonatomic, readonly) NSString *pairingToken;
 @property(nonatomic, copy, nullable) void (^pairingCode)(NSString *pin);
 @property(nonatomic, copy, nullable) void (^paired)(NSData *certificate);

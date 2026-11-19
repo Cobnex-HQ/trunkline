@@ -45,11 +45,14 @@ public enum MacControlAction: Codable, Equatable, Sendable {
     case window(UUID, WindowControl)
     case moveWindow(UUID, displayID: UInt32)
     case desktopDisplay(String)
+    case desktopBitrate(session: UInt64, kbps: Int)
     public var requiresConfirmation: Bool {
         switch self { case .power, .quitApp, .system(.lock), .system(.sleep): true; default: false }
     }
     public func validate() throws {
         switch self {
+        case let .desktopBitrate(session, kbps):
+            guard session != 0, (1000...100_000).contains(kbps) else { throw MacControlError.invalid }
         case .keepAwake(.lidClosed): throw MacControlError.invalid
         case let .desktopDisplay(id):
             guard !id.isEmpty, id.utf8.allSatisfy({ (48...57).contains($0) }), let number = UInt32(id), number != 0 else { throw MacControlError.invalid }
@@ -137,6 +140,7 @@ public struct MacControlSnapshot: Codable, Equatable, Sendable {
     public var requestID: UUID?
     public var windowPage: MacWindowPage?
     /// Nil when the bundled desktop engine does not support monitor selection.
+    public var desktopQuality: DesktopQualityState?
     public var desktopDisplays: DesktopDisplaySelection?
     public init(apps: [MacApplication], windows: [MacWindow], displays: [MacDisplayInfo], volume: Double?, muted: Bool?, accessibility: Bool, frontmostApp: String, installedApps: [MacInstalledApplication]? = nil, loadingApps: Bool? = nil, audioOutputs: [MacAudioOutput]? = nil, power: MacPowerCapability? = nil, windowScope: MacWindowScope? = nil, requestID: UUID? = nil, windowPage: MacWindowPage? = nil, desktopDisplays: DesktopDisplaySelection? = nil) {
         self.apps = apps; self.windows = windows; self.displays = displays; self.volume = volume; self.muted = muted

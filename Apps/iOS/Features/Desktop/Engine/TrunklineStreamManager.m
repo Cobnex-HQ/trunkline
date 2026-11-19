@@ -25,6 +25,13 @@
 
 // The underlying C engine has process-wide state. Reserve it before any
 // stream starts and keep the lease until its actual asynchronous stop finishes.
+@interface StreamManager (TrunklineStatistics)
+- (NSDictionary<NSString *, NSNumber *> *)trunklineNetworkSample;
+@end
+static __weak StreamManager *statisticsOwner;
+NSDictionary<NSString *, NSNumber *> *TrunklineDesktopNetworkSample(void) {
+    return [statisticsOwner trunklineNetworkSample];
+}
 static NSUUID *desktopOwner;
 BOOL TrunklineDesktopStreamAvailable(void) {
     @synchronized (StreamManager.class) { return desktopOwner == nil; }
@@ -75,7 +82,7 @@ BOOL TrunklineDesktopStreamAvailable(void) {
     _leaseToken = [NSUUID UUID];
     @synchronized (StreamManager.class) {
         _denied = desktopOwner != nil;
-        if (!_denied) desktopOwner = _leaseToken;
+        if (!_denied) { desktopOwner = _leaseToken; statisticsOwner = self; }
     }
     _config = config;
     _renderView = view;
@@ -217,6 +224,14 @@ BOOL TrunklineDesktopStreamAvailable(void) {
     
     *sessionUrl = [resumeResp getStringTag:@"sessionUrl0"];
     return TRUE;
+}
+
+- (NSDictionary<NSString *, NSNumber *> *)trunklineNetworkSample {
+    video_stats_t stats;
+    if (!_connection || ![_connection getVideoStats:&stats] || stats.totalFrames <= 0 ||
+        stats.networkDroppedFrames < 0 || stats.networkDroppedFrames > stats.totalFrames ||
+        !isfinite(stats.endTime) || stats.endTime <= stats.startTime || CACurrentMediaTime() - stats.endTime > 3) return nil;
+    return @{@"time": @(stats.endTime), @"loss": @((double)stats.networkDroppedFrames / stats.totalFrames)};
 }
 
 - (NSString*) getStatsOverlayText {

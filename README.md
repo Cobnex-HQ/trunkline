@@ -70,6 +70,8 @@ In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch m
 - The **Spaces and windows** menu offers the same actions without gestures. They use the Mac’s standard Control–Arrow shortcuts, which must be enabled on the host.
 - **Displays** selects a connected physical monitor, one at a time, preserving its proportions. Spaces are virtual desktops within a monitor. Create or rearrange them in Mission Control.
 
+On iPhone and iPad, **Desktop → Adapt to network** adjusts video bitrate below the selected quality limit and restores it gradually when loss clears. It requires the updated Mac engine. The desktop keeps the same resolution and proportions. Encoder changes can cause a brief pause. Older hosts keep their selected fixed quality.
+
 ## Repository map
 
 | Directory | Responsibility |

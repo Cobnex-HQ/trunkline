@@ -42,6 +42,7 @@ static void audioDecode(char *data, int length) { @autoreleasepool { [active aud
     NSData *_pps;
     CMVideoFormatDescriptionRef _format;
     BOOL _waitingForKeyframe;
+    uint64_t _submittedVideoFrames;
     atomic_bool _startedCore;
     OpusMSDecoder *_opus;
     AVAudioEngine *_audioEngine;
@@ -67,6 +68,7 @@ static void audioDecode(char *data, int length) { @autoreleasepool { [active aud
         if (!self.cancelled && self.stateChanged) self.stateChanged(state, error);
     });
 }
+- (uint64_t)submittedVideoFrames { @synchronized(self) { return _submittedVideoFrames; } }
 - (void)startHost:(NSString *)host certificate:(NSData *)certificate width:(int)width height:(int)height fps:(int)fps bitrate:(int)bitrate away:(BOOL)away {
     NSAssert(NSThread.isMainThread, @"Start on the main thread");
     if (active) { [self report:@"Failed" error:@"The previous desktop connection is closing. Try again shortly."]; return; }
@@ -257,6 +259,7 @@ static void audioDecode(char *data, int length) { @autoreleasepool { [active aud
         CFDictionarySetValue((CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0), kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
         [renderer enqueueSampleBuffer:sample];
         _waitingForKeyframe = NO;
+        @synchronized(self) { _submittedVideoFrames += 1; }
     }
     if (sample) CFRelease(sample);
     if (block) CFRelease(block);

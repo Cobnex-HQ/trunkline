@@ -258,6 +258,7 @@ final class HostModel: ObservableObject {
                     var state = await self.controls.snapshot(windowAppPID: windowAppPID, requestID: requestID, windowCursor: windowCursor, preserveWindows: preserveWindows == true)
                     guard !Task.isCancelled, self.activeID == id else { return }
                     state.desktopDisplays = self.sunshine.displaySelection
+                    state.desktopQuality = self.sunshine.qualityState
                     channel?.send(.controls(state))
                 }
             case let .control(request):
@@ -270,6 +271,9 @@ final class HostModel: ObservableObject {
                     let result = await self.controls.perform(request, selectDesktopDisplay: { [weak self] displayID in
                         guard let self else { throw CancellationError() }
                         try await self.sunshine.selectDisplay(displayID)
+                    }, setDesktopBitrate: { [weak self] session, kbps in
+                        guard let self else { throw CancellationError() }
+                        try await self.sunshine.setBitrate(session: session, kbps: kbps)
                     })
                     guard !Task.isCancelled, self.activeID == id else { return }
                     channel?.send(.controlResult(result))

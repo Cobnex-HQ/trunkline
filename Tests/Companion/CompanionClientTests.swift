@@ -11,6 +11,34 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testAdaptiveQualityRequiresHostCapabilityAndStopsAfterRejectedUpdate() throws {
+        let controls = ClientControls()
+        let adaptive = AdaptiveDesktopQuality()
+        var requests: [WireMessage] = []
+        controls.send = { requests.append($0) }
+        var state = MacControlSnapshot(apps: [], windows: [], displays: [], volume: nil,
+            muted: nil, accessibility: true, frontmostApp: "Finder")
+        _ = controls.handle(.controls(state))
+        adaptive.observe(controls: controls, ceiling: 8000, loss: 0.1, sampleTime: 1, now: 1)
+        adaptive.observe(controls: controls, ceiling: 8000, loss: 0.1, sampleTime: 3, now: 3)
+        XCTAssertTrue(requests.isEmpty, "Older hosts must never receive the new command")
+        state.desktopQuality = try JSONDecoder().decode(DesktopQualityState.self,
+            from: Data(#"{"session":42,"maximum":8000,"requested":8000,"applied":8000,"failed":false}"#.utf8))
+        _ = controls.handle(.controls(state))
+        adaptive.observe(controls: controls, ceiling: 8000, loss: 0.1, sampleTime: 5, now: 5)
+        adaptive.observe(controls: controls, ceiling: 8000, loss: 0.1, sampleTime: 7, now: 7)
+        guard case let .control(request) = requests.last else { return XCTFail("Expected a quality request") }
+        XCTAssertEqual(request.action, .desktopBitrate(session: 42, kbps: 5600))
+        let rejected = MacControlResult(id: request.id, error: "Encoder changed")
+        _ = controls.handle(.controlResult(rejected))
+        adaptive.receive(rejected)
+        let count = requests.count
+        adaptive.observe(controls: controls, ceiling: 8000, loss: 0.1, sampleTime: 21, now: 21)
+        adaptive.observe(controls: controls, ceiling: 8000, loss: 0.1, sampleTime: 23, now: 23)
+        XCTAssertEqual(requests.count, count)
+        controls.reset()
+    }
+
     func testTwoMacConnectionsKeepIndependentStateWhenOneWindowBackgrounds() async throws {
         let readyA = expectation(description: "First Mac"), readyB = expectation(description: "Second Mac")
         let a = try TerminalCreationServer(ready: readyA, sessions: [])

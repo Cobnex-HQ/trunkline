@@ -1,0 +1,169 @@
+diff --git a/src/adaptive_quality.h b/src/adaptive_quality.h
+new file mode 100644
+--- /dev/null
++++ b/src/adaptive_quality.h
+@@ -0,0 +1,49 @@
++/** Trunkline bounded bitrate control. Requests never change desktop geometry. */
++#pragma once
++#include <algorithm>
++#include <cstdint>
++#include <mutex>
++namespace video {
++class AdaptiveQuality {
++public:
++  struct State {
++    uint64_t session = 0;
++    int maximum = 0, requested = 0, applied = 0;
++    bool failed = false;
++  };
++  uint64_t begin(int maximum) {
++    std::lock_guard lock(mutex_);
++    if (state_.session) { state_.failed = true; state_.requested = state_.maximum; return 0; }
++    state_ = {++generation_, maximum, maximum, 0, false};
++    return state_.session;
++  }
++  void end(uint64_t session) {
++    std::lock_guard lock(mutex_);
++    if (session && state_.session == session) state_ = {};
++  }
++  State snapshot() { std::lock_guard lock(mutex_); return state_; }
++  bool request(uint64_t session, int kbps) {
++    std::lock_guard lock(mutex_);
++    if (!session || session != state_.session || state_.failed || kbps < 1000 || kbps > state_.maximum) return false;
++    state_.requested = kbps;
++    return true;
++  }
++  int target(uint64_t session) {
++    std::lock_guard lock(mutex_);
++    return session && state_.session == session ? state_.requested : 0;
++  }
++  void applied(uint64_t session, int kbps) {
++    std::lock_guard lock(mutex_);
++    if (session && state_.session == session) state_.applied = kbps;
++  }
++  void failed(uint64_t session) {
++    std::lock_guard lock(mutex_);
++    if (session && state_.session == session) { state_.failed = true; state_.requested = state_.maximum; }
++  }
++private:
++  std::mutex mutex_;
++  uint64_t generation_ = 0;
++  State state_;
++};
++inline AdaptiveQuality &adaptive_quality() { static AdaptiveQuality value; return value; }
++}
+diff --git a/src/video.cpp b/src/video.cpp
+--- a/src/video.cpp
++++ b/src/video.cpp
+@@ -36,6 +36,7 @@
+ #include "sync.h"
+ #include "video.h"
+ #include "display_selection.h"
++#include "adaptive_quality.h"
+
+ #ifdef _WIN32
+ extern "C" {
+@@ -2413,12 +2414,20 @@
+     std::unique_ptr<platf::encode_device_t> encode_device,
+     safe::signal_t &reinit_event,
+     const encoder_t &encoder,
+-    void *channel_data
++    void *channel_data,
++    uint64_t quality_session
+   ) {
++    if (auto target = adaptive_quality().target(quality_session); target > 0) config.bitrate = target;
+     auto session = make_encode_session(disp.get(), encoder, config, disp->width, disp->height, std::move(encode_device));
+     if (!session) {
++      // Fall back once to the negotiated bitrate. Do not loop on encoder failure.
++      auto state = adaptive_quality().snapshot();
++      if (!quality_session || state.failed || config.bitrate == state.maximum) mail->event<bool>(mail::shutdown)->raise(true);
++      adaptive_quality().failed(quality_session);
+       return;
+     }
++    adaptive_quality().applied(quality_session, config.bitrate);
++    session->request_idr_frame();
+
+     // As a workaround for NVENC hangs and to generally speed up encoder reinit,
+     // we will complete the encoder teardown in a separate thread if supported.
+@@ -2459,6 +2468,9 @@
+     }
+
+     while (true) {
++      // Recreate only the encoder between frames. Capture, transport, input,
++      // frame numbering and the negotiated resolution remain unchanged.
++      if (auto target = adaptive_quality().target(quality_session); target > 0 && target != config.bitrate) break;
+       bool requested_idr_frame = false;
+
+       while (invalidate_ref_frames_events->peek()) {
+@@ -2889,6 +2901,11 @@
+     config_t &config,
+     void *channel_data
+   ) {
++    uint64_t quality_session = 0;
++#ifdef __APPLE__
++    if (chosen_encoder->name == "videotoolbox"sv) quality_session = adaptive_quality().begin(config::video.max_bitrate > 0 ? std::min(config.bitrate, config::video.max_bitrate) : config.bitrate);
++#endif
++    auto quality_lifetime = util::fail_guard([quality_session]() { adaptive_quality().end(quality_session); });
+     auto shutdown_event = mail->event<bool>(mail::shutdown);
+
+     auto images = std::make_shared<img_event_t::element_type>();
+@@ -2963,7 +2980,8 @@
+         std::move(encode_device),
+         ref->reinit_event,
+         *ref->encoder_p,
+-        channel_data
++        channel_data,
++        quality_session
+       );
+     }
+   }
+diff --git a/src/confighttp.cpp b/src/confighttp.cpp
+--- a/src/confighttp.cpp
++++ b/src/confighttp.cpp
+@@ -45,6 +45,7 @@
+ #include "crypto.h"
+ #include "display_device.h"
+ #include "display_selection.h"
++#include "adaptive_quality.h"
+ #include "file_handler.h"
+ #include "globals.h"
+ #include "httpcommon.h"
+@@ -1494,6 +1495,29 @@
+     return result;
+   }
+
++  nlohmann::json trunkline_quality_status() {
++    const auto state = video::adaptive_quality().snapshot();
++    return {{"session", state.session}, {"maximum", state.maximum}, {"requested", state.requested},
++            {"applied", state.applied}, {"failed", state.failed}};
++  }
++  void getTrunklineQuality(const resp_https_t &response, const req_https_t &request) {
++    if (!authenticate(response, request)) return;
++    send_response(response, trunkline_quality_status());
++  }
++  void setTrunklineQuality(const resp_https_t &response, const req_https_t &request) {
++    if (!authenticate(response, request) || !check_content_type(response, request, "application/json") ||
++        !validate_csrf_token(response, request, get_client_id(request))) return;
++    if (request->content.size() > 1024) { bad_request(response, request, "Quality request is too large"); return; }
++    const auto input = nlohmann::json::parse(request->content.string(), nullptr, false);
++    if (!input.is_object() || !input.contains("session") || !input["session"].is_number_unsigned() ||
++        !input.contains("kbps") || !input["kbps"].is_number_integer() ||
++        input["kbps"] < 1000 || input["kbps"] > 100000 ||
++        !video::adaptive_quality().request(input["session"].get<uint64_t>(), input["kbps"].get<int>())) {
++      bad_request(response, request, "The encoder session changed or the bitrate is unavailable"); return;
++    }
++    send_response(response, trunkline_quality_status());
++  }
++
+   void getTrunklineDisplays(const resp_https_t &response, const req_https_t &request) {
+     if (!authenticate(response, request)) {
+       return;
+@@ -2454,6 +2478,8 @@
+     server.resource["^/api/clients/unpair$"]["POST"] = unpair;
+     server.resource["^/api/clients/unpair-all$"]["POST"] = unpairAll;
+     server.resource["^/api/clients/update$"]["POST"] = updateClient;
++    server.resource["^/api/trunkline/quality$"]["GET"] = getTrunklineQuality;
++    server.resource["^/api/trunkline/quality$"]["POST"] = setTrunklineQuality;
+     server.resource["^/api/trunkline/displays$"]["GET"] = getTrunklineDisplays;
+     server.resource["^/api/trunkline/displays$"]["POST"] = selectTrunklineDisplay;
+     server.resource["^/api/config$"]["GET"] = getConfig;

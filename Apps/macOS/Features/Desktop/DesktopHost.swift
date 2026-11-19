@@ -182,7 +182,29 @@ final class DesktopHost: ObservableObject {
         let latestClients = (try? JSONDecoder().decode(Clients.self, from: data).named_certs) ?? []
         if clients != latestClients { clients = latestClients }
         await refreshDisplaySelection()
+        await refreshQuality()
 
+    }
+    private(set) var qualityState: DesktopQualityState?
+    private var qualityUnsupported = false
+    private func refreshQuality() async {
+        guard !qualityUnsupported else { return }
+        do { qualityState = try JSONDecoder().decode(DesktopQualityState.self, from: await request("/api/trunkline/quality")) }
+        catch {
+            qualityState = nil
+            if let error = error as? HTTPStatusError, error.code == 404 { qualityUnsupported = true }
+        }
+    }
+    func setBitrate(session: UInt64, kbps: Int) async throws {
+        try MacControlAction.desktopBitrate(session: session, kbps: kbps).validate()
+        guard running, let state = qualityState, state.isAvailable, state.session == session, kbps <= state.maximum else { throw MacControlError.unavailable }
+        struct Request: Encodable { let session: UInt64; let kbps: Int }
+        let token = try await csrf()
+        try Task.checkCancellation()
+        let data = try await request("/api/trunkline/quality", body: JSONEncoder().encode(Request(session: session, kbps: kbps)), token: token)
+        let updated = try JSONDecoder().decode(DesktopQualityState.self, from: data)
+        guard updated.session == session, updated.requested == kbps, !updated.failed else { throw MacControlError.unavailable }
+        qualityState = updated
     }
     private func refreshDisplaySelection() async {
         guard !displaySelectionUnsupported, !selectingDisplay else { return }
@@ -265,6 +287,7 @@ final class DesktopHost: ObservableObject {
     }
     func stop() {
         generation = UUID(); monitor?.cancel(); monitor = nil
+        qualityState = nil; qualityUnsupported = false
         displaySelection = nil; displaySelectionUnsupported = false; selectingDisplay = false; displaySelectionRevision = UUID()
         session?.invalidateAndCancel(); session = nil
         if let process, process.isRunning {

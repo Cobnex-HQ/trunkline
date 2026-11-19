@@ -17,7 +17,8 @@ final class MacStreamIntegrationTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: root) }
         let configuration = try DesktopHostConfiguration(root: root)
-        try (configuration.contents + "\nport = 59989\n").write(to: root.appendingPathComponent("host.conf"), atomically: true, encoding: .utf8)
+        let bitrateLimit = ProcessInfo.processInfo.environment["TRUNKLINE_TEST_ADAPTIVE"] == "1" ? "max_bitrate = 2500\n" : ""
+        try (configuration.contents + "\nport = 59989\n" + bitrateLimit).write(to: root.appendingPathComponent("host.conf"), atomically: true, encoding: .utf8)
         try configuration.applications.write(to: root.appendingPathComponent("apps.json"))
         let password = UUID().uuidString
         try DesktopHostConfiguration.credentials(username: "fixture", password: password, salt: String(UUID().uuidString.prefix(16))).write(to: root.appendingPathComponent("management.json"))
@@ -79,6 +80,37 @@ final class MacStreamIntegrationTests: XCTestCase {
         }
         XCTAssertNil(failure)
         XCTAssertTrue(engine.displayLayer.isReadyForDisplay, "The real host must deliver a decodable desktop frame")
+        // Change the actual encoder bitrate without reopening the transport.
+        if ProcessInfo.processInfo.environment["TRUNKLINE_TEST_ADAPTIVE"] == "1" {
+            let quality = try await request("/api/trunkline/quality")
+            let qualitySession = try XCTUnwrap(quality["session"] as? UInt64)
+            XCTAssertGreaterThan(qualitySession, 0)
+            let maximum = try XCTUnwrap(quality["maximum"] as? Int)
+            XCTAssertEqual(maximum, 2500, "The host bitrate cap must remain authoritative")
+            let token = try await request("/api/csrf-token")["csrf_token"] as! String
+            for bitrate in [max(1000, maximum / 2), maximum] {
+                let body = try JSONSerialization.data(withJSONObject: ["session": qualitySession, "kbps": bitrate])
+                _ = try await request("/api/trunkline/quality", body: body, csrf: token)
+                var applied = false
+                for _ in 0..<80 {
+                    let state = try await request("/api/trunkline/quality")
+                    if state["applied"] as? Int == bitrate { applied = true; break }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                XCTAssertTrue(applied, "The encoder must confirm the requested bitrate")
+                let before = engine.submittedVideoFrames
+                for _ in 0..<80 where engine.submittedVideoFrames <= before + 3 {
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                XCTAssertGreaterThan(engine.submittedVideoFrames, before + 3)
+                XCTAssertNotEqual(engine.displayLayer.sampleBufferRenderer.status, .failed)
+                XCTAssertNil(failure)
+            }
+            engine.stop()
+            await withCheckedContinuation { continuation in MacDesktopEngine.finishStopping { continuation.resume() } }
+            await ProcessShutdown.finish([process])
+            return
+        }
         // XCTest hosts cannot reliably become the frontmost application. Verify
         // injection at the OS boundary and consume fixture events before they
         // reach any of the user's applications.

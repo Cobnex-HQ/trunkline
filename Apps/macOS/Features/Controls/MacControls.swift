@@ -159,12 +159,15 @@ actor MacControls {
         return try await onAccessibilityThread(pid: pid, operation)
     }
 
-    func perform(_ request: MacControlRequest, selectDesktopDisplay: (@Sendable (String) async throws -> Void)? = nil) async -> MacControlResult {
+    func perform(_ request: MacControlRequest, selectDesktopDisplay: (@Sendable (String) async throws -> Void)? = nil, setDesktopBitrate: (@Sendable (UInt64, Int) async throws -> Void)? = nil) async -> MacControlResult {
         if let previous = recent[request.id] { return previous }
         let result: MacControlResult
         do {
             try Task.checkCancellation(); try request.action.validate()
             switch request.action {
+            case let .desktopBitrate(session, kbps):
+                guard let setDesktopBitrate else { throw MacControlError.unavailable }
+                try await setDesktopBitrate(session, kbps)
             case let .desktopDisplay(id):
                 guard let selectDesktopDisplay else { throw MacControlError.unavailable }
                 try await selectDesktopDisplay(id)

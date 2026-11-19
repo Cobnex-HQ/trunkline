@@ -45,6 +45,7 @@ if git(input_source, 'rev-parse', 'HEAD', capture=True).stdout.strip() != INPUT_
 apply_patch(input_source, 'macos-pointer.patch')
 apply_patch(SOURCE, 'macos-capture-geometry.patch')
 apply_patch(SOURCE, 'macos-display-selection.patch')
+apply_patch(SOURCE, 'macos-adaptive-quality.patch')
 apply_patch(SOURCE, 'macos-geometry-tests.patch')
 apply_patch(SOURCE, 'macos-dependency-linking.patch')
 print(f'Prepared experimental source: {SOURCE}\nInstalled apps and Vendor runtimes are unchanged.')
