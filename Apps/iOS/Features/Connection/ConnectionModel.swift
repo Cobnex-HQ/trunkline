@@ -172,6 +172,9 @@ final class ConnectionModel: ObservableObject {
         name = selected?.name ?? "Your Mac"
         savedMacs = macStore.macs
         files.send = { [weak self] in self?.send($0) }
+        files.clipboard.localRevision = { UIPasteboard.general.changeCount }
+        files.clipboard.readLocal = { UIPasteboard.general.string }
+        files.clipboard.writeLocal = { UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic: $0]], options: [.localOnly: true]) }
         files.onReconnect = { [weak self] in self?.disconnect() }
         controls.send = { [weak self] in self?.send($0) }
     }
@@ -325,6 +328,7 @@ final class ConnectionModel: ObservableObject {
                     self.name = name; self.desktopDisplay = display; self.phase = .connected
                     defaults.set(connectionLink, forKey: "pairing-link")
                     if let paired = try? PairingDetails.parse(connectionLink) {
+                        self.files.configureClipboard(macID: paired.fingerprint, defaults: self.defaults)
                         self.macStore.save(paired, name: name, away: self.useAwayAccess)
                         self.savedMacs = self.macStore.macs
                         self.defaults.set(paired.fingerprint, forKey: "resume-mac-id")
@@ -397,6 +401,7 @@ final class ConnectionModel: ObservableObject {
            (try? PairingDetails.parse(legacy))?.fingerprint == pairing.fingerprint {
             SecretStore.delete("client-passcode"); defaults.removeObject(forKey: "credential-pairing")
         }
+        MacPreferencesStore(defaults: defaults).remove(pairing.fingerprint)
         macStore.remove(pairing.fingerprint); savedMacs = macStore.macs
         defaults.removeObject(forKey: "pairing-link")
         pairingText = ""; passcode = ""; rememberPasscode = false
@@ -434,6 +439,7 @@ final class ConnectionModel: ObservableObject {
     func applicationDidBecomeActive() async {
         guard !Task.isCancelled else { return }
         isForeground = true
+        if phase == .connected { files.clipboard.activate(); return }
         guard phase == .setup else { return }
         if let resume = resumeConnection {
             guard pairingText == resume.pairingLink else { clearResume(); checkLocalRoute(); return }

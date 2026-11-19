@@ -165,7 +165,7 @@ struct ControlsView: View {
                                      : "Active connections keep the Mac and display awake. Extra keep-awake stays on until you change it or quit the Mac app.")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
-                            Button("Clipboard", systemImage: "clipboard") { files.send?(.requestClipboard); clipboard = true }
+                            Button("Clipboard", systemImage: "clipboard") { clipboard = true }
                             Menu {
                                 Button("Lock Mac", systemImage: "lock") { confirm(.system(.lock), title: "Lock your Mac?") }
                                 Button("Sleep Mac", systemImage: "moon") { confirm(.system(.sleep), title: "Put your Mac to sleep?") }

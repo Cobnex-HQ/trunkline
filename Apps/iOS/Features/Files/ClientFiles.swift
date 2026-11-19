@@ -19,6 +19,9 @@ final class ClientFiles: ObservableObject {
     @Published var progress = 0.0
     @Published var downloadedURL: URL?
     @Published var error: String?
+    let clipboard = ClipboardTransfer()
+    private var clipboardMacID = ""
+    private var clipboardPreferences = MacPreferencesStore()
     @Published var clipboardText = ""
     @Published var clipboardError: String?
     var send: ((WireMessage) -> Void)?
@@ -35,6 +38,20 @@ final class ClientFiles: ObservableObject {
     private var requestedPath: String?
     init(operationTimeout: Duration = .seconds(30), cancellationTimeout: Duration = .seconds(10)) {
         self.operationTimeout = operationTimeout; self.cancellationTimeout = cancellationTimeout
+        clipboard.send = { [weak self] in self?.send?($0) }
+    }
+    func configureClipboard(macID: String, defaults: UserDefaults) {
+        clipboard.reset()
+        clipboardMacID = macID
+        clipboardPreferences = MacPreferencesStore(defaults: defaults)
+        clipboard.mode = clipboardPreferences.load(macID).clipboard
+        clipboard.activate()
+    }
+    func setClipboardSyncMode(_ mode: ClipboardSyncMode) {
+        var preferences = clipboardPreferences.load(clipboardMacID)
+        preferences.clipboard = mode
+        clipboardPreferences.save(preferences, for: clipboardMacID)
+        clipboard.mode = mode
     }
     var isBusy: Bool { transferName != nil || mutation != nil || cancellation != nil || isLoading || requiresReconnect }
     var isCancelling: Bool { cancellation != nil }
@@ -78,7 +95,7 @@ final class ClientFiles: ObservableObject {
     }
     @discardableResult func handle(_ message: WireMessage) -> Bool {
         if case let .operationError(text, context?) = message {
-            if context.domain == .clipboard { clipboardError = text; return true }
+            if context.domain == .clipboard { clipboard.fail(text); clipboardError = text; return true }
             guard context.domain == .files else { return false }
         }
         // Ordered cancellation acknowledgement is a barrier: replies from the
@@ -136,7 +153,7 @@ final class ClientFiles: ObservableObject {
             case let .operationError(message, _):
                 if transferName != nil { cancelTransfer() } else { clearTransfer() }
                 isLoading = false; requestedPath = nil; error = message
-            case let .clipboard(text): clipboardText = text; clipboardError = nil
+            case let .clipboard(text): clipboard.receive(text); clipboardText = text; clipboardError = nil
             default: return false
             }
         } catch { cancelTransfer(); self.error = error.localizedDescription }
@@ -223,6 +240,7 @@ final class ClientFiles: ObservableObject {
     }
     func reset() {
         features = []
+        clipboard.reset()
         clearTransfer(); entries = []; path = ""; isLoading = false; hasLoadedListing = false; clipboardText = ""
         requestedPath = nil; error = nil; clipboardError = nil
         downloadedURL = nil

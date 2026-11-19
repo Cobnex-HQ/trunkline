@@ -2,6 +2,12 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Clipboard controls and consent — 2026-11-19
+
+- Added explicit copy/transfer actions, acknowledged completion, bounded waits and per-Mac opt-in text sync. Backgrounding stops sync. Incoming text does not replace a newer local copy. Timed-out legacy replies are ignored until reconnect.
+- Passed 36 tooling, 109 shared Swift and 14 Rust tests. Both simulators passed all 82 companion tests, including clipboard/file-operation isolation. Reviewed the native clipboard screen on iPhone.
+- Existing clipboard messages remain compatible with older Mac hosts. Physical paste-permission and cross-device acceptance remain pending.
+
 ## Bounded away connection setup — 2026-11-19
 
 - Reproduced the old long setup wait using the real transport executable and an offline loopback endpoint. Clients now stop after 45 seconds with at most five setup attempts and exponential delays of 2, 4, 8 and 16 seconds. The Mac host continues listening with capped backoff.

@@ -11,6 +11,35 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testClipboardTransferDoesNotInterruptFileListingAndKeepsMacPreferencesSeparate() {
+        let suite = "clipboard-integration-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = ClientFiles()
+        defer { files.reset() }
+        var sent: [WireMessage] = []
+        var copied = ""
+        files.send = { sent.append($0) }
+        files.clipboard.writeLocal = { copied = $0 }
+        files.configureClipboard(macID: "first", defaults: defaults)
+        files.list()
+        files.clipboard.copyFromMac()
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertTrue(files.isLoading)
+        _ = files.handle(.clipboard("Mac text"))
+        XCTAssertEqual(copied, "Mac text")
+        XCTAssertNotNil(files.clipboard.feedback)
+        XCTAssertTrue(files.isLoading)
+        files.setClipboardSyncMode(.fromMac)
+        files.configureClipboard(macID: "second", defaults: defaults)
+        XCTAssertEqual(files.clipboard.mode, .off)
+        files.configureClipboard(macID: "first", defaults: defaults)
+        XCTAssertEqual(files.clipboard.mode, .fromMac)
+        files.reset()
+        _ = files.handle(.clipboard("late text"))
+        XCTAssertEqual(copied, "Mac text")
+    }
+
     func testAwayFailureIsDeliveredOnceAndLateEventsAreIgnored() {
         let remote = RemoteConnection()
         var failures: [String] = []

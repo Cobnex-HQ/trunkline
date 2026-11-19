@@ -8,6 +8,7 @@ Trunkline connects your iPhone or iPad to your chosen Mac. This release has no T
 
 - **Pairing:** saved Mac names, addresses, certificate fingerprints and preferences identify connections. Secrets and identities stay in local platform storage, including Keychain. Pairing QR codes are sensitive.
 - **Remote content:** desktop video/audio, input, terminal commands/output, files and clipboard content pass between paired devices. Trunkline does not upload them to publisher-operated storage. Transferred files remain until you remove them.
+- **Clipboard:** manual actions transfer text only. Optional sync is off by default and saved per Mac. Mac-to-device sync receives text while the window is active. Both-directions sync also reads newly copied device text and may trigger an iOS paste-permission prompt. Trunkline does not save clipboard history or enable Universal Clipboard for received text. Disconnect stops syncing.
 - **Permissions:** the camera scans QR codes, Face ID/Touch ID unlocks saved credentials, and local-network access connects devices. The Mac needs capture and input permissions. OS approval does not authorise unpaired devices.
 - **Diagnostics:** local logs may contain connection events, addresses, app names and errors. Redact logs and screenshots before sharing. This release does not automatically upload diagnostics to the publisher.
 

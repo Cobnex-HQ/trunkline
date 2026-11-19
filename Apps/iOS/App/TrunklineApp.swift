@@ -55,6 +55,7 @@ struct TrunklineApp: SwiftUI.App {
                 }
             }
             .onChange(of: scenePhase, initial: true) { _, phase in
+                if phase == .inactive { model.files.clipboard.pause() }
                 if phase == .background { model.applicationDidEnterBackground() }
                 else if phase == .active {
                     // Face ID temporarily makes the scene inactive. Do not cancel
@@ -79,47 +80,6 @@ struct TrunklineApp: SwiftUI.App {
             .alert("Connection", isPresented: Binding(get: { model.phase == .connected && model.error != nil }, set: { if !$0 { model.error = nil } })) {
                 Button("OK") { model.error = nil }
             } message: { Text(model.error ?? "") }
-        }
-    }
-}
-
-struct ClipboardView: View {
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @ObservedObject var files: ClientFiles
-    @State private var outgoing = ""
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        NavigationStack {
-            Form {
-                TrunklineSection("Send to Mac") {
-                    TextEditor(text: $outgoing).frame(minHeight: verticalSizeClass == .compact ? 96 : 160).accessibilityLabel("Clipboard text")
-                    PasteButton(payloadType: String.self) { outgoing = $0.joined(separator: "\n") }
-                    Button("Copy to Mac", systemImage: "arrow.up.doc") {
-                        files.clipboardError = nil
-                        files.send?(.setClipboard(outgoing))
-                    }.disabled(outgoing.isEmpty || outgoing.utf16.count > 65536)
-                }
-                TrunklineSection("Mac clipboard") {
-                    Text(files.clipboardText.isEmpty ? "The Mac clipboard contains no text." : files.clipboardText)
-                        .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                    Button("Copy to this device", systemImage: "doc.on.doc") { UIPasteboard.general.string = files.clipboardText }
-                        .disabled(files.clipboardText.isEmpty)
-                }
-                if let error = files.clipboardError {
-                    TrunklineSection {
-                        Text(error).foregroundStyle(.orange)
-                        Button("Refresh clipboard", systemImage: "arrow.clockwise") {
-                            files.clipboardError = nil
-                            files.send?(.requestClipboard)
-                        }
-                    }
-                }
-            }
-            .nativeWorkspaceStyle()
-            .frame(maxWidth: 780).frame(maxWidth: .infinity)
-            .background(Color.workspaceBackground)
-            .navigationTitle("Clipboard")
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
 }
