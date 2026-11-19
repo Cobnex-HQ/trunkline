@@ -1,5 +1,7 @@
 # Validation
 
+Display feature checks are recorded in [validation](VALIDATION.md). The [device-size probe](DISPLAY-FEASIBILITY.md) is read-only. The separate [privacy capture experiment](HOST-PRIVACY.md) needs local Screen Recording approval and is not part of the automated suite.
+
 Run `python3 Scripts/dev.py test` for tooling, shared Swift and Rust tests. Tests must work without maintainer credentials, device IDs or private networks.
 
 ## Select checks for your change
