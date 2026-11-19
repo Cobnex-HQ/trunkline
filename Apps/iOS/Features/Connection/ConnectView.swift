@@ -4,6 +4,7 @@ import TrunklineCore
 #endif
 
 struct ConnectView: View {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: ConnectionModel
     @State private var scanner = false
     @State private var manual = false
@@ -134,6 +135,11 @@ struct ConnectView: View {
                                     .accessibilityHidden(true)
                                 Text("Trunkline").font(.headline)
                             }
+                        }
+                    }
+                    if UIDevice.current.userInterfaceIdiom == .pad {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("New window", systemImage: "macwindow.badge.plus") { openWindow(id: "workspace") }
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {

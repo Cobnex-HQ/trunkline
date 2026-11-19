@@ -11,6 +11,40 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testTwoMacConnectionsKeepIndependentStateWhenOneWindowBackgrounds() async throws {
+        let readyA = expectation(description: "First Mac"), readyB = expectation(description: "Second Mac")
+        let a = try TerminalCreationServer(ready: readyA, sessions: [])
+        let b = try TerminalCreationServer(ready: readyB, sessions: [])
+        defer { a.stop(); b.stop() }
+        await fulfillment(of: [readyA, readyB], timeout: fixtureStartupTimeout)
+        let suite = "multiwindow-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        func model(_ server: TerminalCreationServer, fingerprint: String) throws -> ConnectionModel {
+            let port = try XCTUnwrap(server.listener.port)
+            let result = ConnectionModel(defaults: defaults, makeChannel: { _ in
+                SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+            })
+            result.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: fingerprint).link
+            result.passcode = "fixture-passcode"
+            result.connect()
+            return result
+        }
+        let first = try model(a, fingerprint: String(repeating: "a", count: 64))
+        let second = try model(b, fingerprint: String(repeating: "b", count: 64))
+        defer { first.disconnect(); second.disconnect() }
+        try await terminalEventually { first.phase == .connected && second.phase == .connected }
+        first.workspaceSection = .terminal
+        second.workspaceSection = .files
+        first.applicationDidEnterBackground()
+        XCTAssertEqual(first.phase, .setup)
+        XCTAssertEqual(second.phase, .connected)
+        XCTAssertEqual(second.workspaceSection, .files)
+        XCTAssertTrue(UIApplication.shared.isIdleTimerDisabled, "One window must not clear another connection’s awake request")
+        second.disconnect()
+        XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled)
+    }
+
     func testClipboardTransferDoesNotInterruptFileListingAndKeepsMacPreferencesSeparate() {
         let suite = "clipboard-integration-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!

@@ -2,6 +2,22 @@ import XCTest
 @testable import TrunklineCore
 
 final class SavedMacTests: XCTestCase {
+    func testTwoWindowStoresMergeChangesAndDoNotResurrectRemovedMacs() throws {
+        let suite = "window-store-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let a = try PairingDetails(host: "a.local", port: 47995, fingerprint: String(repeating: "a", count: 64))
+        let b = try PairingDetails(host: "b.local", port: 47995, fingerprint: String(repeating: "b", count: 64))
+        var first = SavedMacStore(defaults: defaults)
+        var second = SavedMacStore(defaults: defaults)
+        first.save(a)
+        second.save(b)
+        XCTAssertEqual(Set(SavedMacStore(defaults: defaults).macs.map(\.id)), [a.fingerprint, b.fingerprint])
+        first.remove(a.fingerprint)
+        second.select(b.fingerprint)
+        XCTAssertEqual(SavedMacStore(defaults: defaults).macs.map(\.id), [b.fingerprint])
+    }
+
     func testKeepsMultipleMacsUpdatesAddressByIdentityAndPersistsSelection() throws {
         let suite = "saved-macs-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

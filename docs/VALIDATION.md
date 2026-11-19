@@ -123,3 +123,12 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Passed local TCP authentication, admission rejection, cancellation and away-tunnel lifetime checks. The shared suite passed 104 Swift, 35 tooling and 11 Rust tests. The iOS companion simulator suite also passed.
 - Local checks used two processes on one Apple-silicon Mac. Two physical Macs, separate-network access, audible playback, Intel execution, non-US keyboards and sustained performance still need acceptance testing.
 - The Mac client currently provides desktop viewing and controls. Terminal and files remain mobile-client features. Away connections require stopping this Mac’s own host access because both use the same local tunnel ports.
+
+## Clipboard and iPad windows — 2026-11-19
+
+- Added acknowledged clipboard transfers, per-Mac sync consent and timeout handling. A delayed reply cannot overwrite a newer local copy. Only the focused window may sync.
+- Each iPad window owns its connection, navigation and resume state. Saved-Mac mutations merge from storage. Keep-awake claims are released per window.
+- The native desktop engine remains process-wide. Its lease lasts through asynchronous shutdown, including repeated close requests. A second window gets an explicit limit instead of redirecting the first stream's video or input. Away access also remains limited to one tunnel per process.
+- Passed 85 companion tests on each simulator, including two simultaneous local fixture connections, backgrounding one window, clipboard acknowledgments and native engine ownership. Shared Swift, tooling and Rust suites passed. An additional clipboard focus regression passed after reproducing the overwrite.
+- Terminal, Controls and passcode portrait → landscape → portrait UI tests passed on both simulators. Reviewed iPhone terminal and iPad controls captures.
+- Physical Stage Manager, two real Macs, clipboard privacy prompts and reconnecting a desktop after closing another window remain acceptance checks. No device installation or public release is claimed by these checks.

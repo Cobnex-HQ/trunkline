@@ -6,7 +6,33 @@ import TrunklineCore
 @main
 @MainActor
 struct TrunklineApp: SwiftUI.App {
-    @StateObject private var model = ConnectionModel()
+    var body: some Scene {
+        WindowGroup(id: "workspace") { WorkspaceScene() }
+        WindowGroup("Mac", id: "mac", for: String.self) { $macID in
+            WorkspaceScene(initialMacID: macID)
+        }
+    }
+}
+
+@MainActor
+private enum WorkspaceModels {
+    static var createdFirstWindow = false
+    static func make(macID: String?) -> ConnectionModel {
+        let first = !createdFirstWindow && macID == nil
+        createdFirstWindow = true
+        let model = ConnectionModel(automaticallyResume: first,
+            resumeStorageKey: first ? "resume-mac-id" : "resume-mac-id.window.\(macID ?? UUID().uuidString)")
+        if let macID { model.selectMac(macID) }
+        return model
+    }
+}
+
+@MainActor
+struct WorkspaceScene: View {
+    @StateObject private var model: ConnectionModel
+    init(initialMacID: String? = nil) {
+        _model = StateObject(wrappedValue: WorkspaceModels.make(macID: initialMacID))
+    }
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("trunkline.appearance") private var appearance: AppAppearance = .system
     private var selectedAppearance: AppAppearance {
@@ -33,8 +59,7 @@ struct TrunklineApp: SwiftUI.App {
             else { ConnectView(model: model) }
         }
     }
-    var body: some Scene {
-        WindowGroup {
+    var body: some View {
             Group {
                 regularContent
             }
@@ -46,6 +71,9 @@ struct TrunklineApp: SwiftUI.App {
                 }
                 #endif
             }
+            .background(WindowFocusReader(changed: { model.setWindowFocused($0) }, disconnected: { model.applicationDidEnterBackground() }))
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TrunklineDesktopStopped"))) { _ in model.refreshAwakeState() }
+            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in model.refreshSavedMacs() }
             .tint(Color("AccentColor"))
             .preferredColorScheme(selectedAppearance.colorScheme)
             .overlay {
@@ -80,6 +108,5 @@ struct TrunklineApp: SwiftUI.App {
             .alert("Connection", isPresented: Binding(get: { model.phase == .connected && model.error != nil }, set: { if !$0 { model.error = nil } })) {
                 Button("OK") { model.error = nil }
             } message: { Text(model.error ?? "") }
-        }
     }
 }

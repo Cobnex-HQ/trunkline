@@ -22,7 +22,12 @@ public struct SavedMacStore {
         }
         if !macs.contains(where: { $0.id == selectedID }) { selectedID = macs.first?.id }
     }
+    public mutating func refresh() {
+        macs = defaults.data(forKey: "saved-macs.v1").flatMap { try? JSONDecoder().decode([SavedMac].self, from: $0) } ?? []
+        selectedID = defaults.string(forKey: "selected-mac.v1")
+    }
     public mutating func save(_ pairing: PairingDetails, name: String? = nil, away: Bool? = nil) {
+        refresh()
         // Never persist the bearer ticket in UserDefaults.
         guard let local = try? PairingDetails(host: pairing.host, port: pairing.port, fingerprint: pairing.fingerprint) else { return }
         if let index = macs.firstIndex(where: { $0.id == pairing.fingerprint }) {
@@ -36,10 +41,12 @@ public struct SavedMacStore {
         persist()
     }
     public mutating func select(_ id: String) {
+        refresh()
         guard macs.contains(where: { $0.id == id }) else { return }
         selectedID = id; persist()
     }
     public mutating func remove(_ id: String) {
+        refresh()
         macs.removeAll { $0.id == id }
         if selectedID == id { selectedID = macs.first?.id }
         persist()

@@ -2,6 +2,7 @@
 #import "StreamConfiguration.h"
 
 NS_ASSUME_NONNULL_BEGIN
+FOUNDATION_EXPORT BOOL TrunklineDesktopStreamAvailable(void);
 @interface TrunklineStream : NSObject
 @property(nonatomic, readonly, copy) NSString *pairingToken;
 @property(nonatomic, copy, nullable) void (^pairingCode)(NSString *);

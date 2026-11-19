@@ -62,10 +62,11 @@ final class ClipboardTransferTests: XCTestCase {
         client.poll()
         XCTAssertTrue(requests.isEmpty)
         XCTAssertEqual(reads, 0)
-        client.mode = .bothDirections
+        client.mode = .fromMac
         client.poll()
         client.receive("Mac text")
         XCTAssertEqual(local, "Mac text")
+        client.mode = .bothDirections
         client.poll()
         XCTAssertEqual(reads, 0, "Our own clipboard write must not be sent back")
         client.receive("Mac text")
@@ -76,6 +77,23 @@ final class ClipboardTransferTests: XCTestCase {
         client.reset()
         client.poll()
         XCTAssertEqual(reads, 1, "Background/disconnect must stop clipboard access")
+    }
+
+    func testWindowActivationDoesNotOverwriteAnExistingDeviceClipboard() {
+        let client = ClipboardTransfer()
+        var local = "copied in another window", revision = 1
+        client.localRevision = { revision }
+        client.writeLocal = { local = $0; revision += 1 }
+        client.mode = .bothDirections
+        client.activate(); client.poll(); client.receive("old Mac text")
+        XCTAssertEqual(local, "copied in another window")
+        client.poll(); client.receive("new Mac text")
+        XCTAssertEqual(local, "new Mac text")
+        client.pause()
+        local = "copied while inactive"; revision += 1
+        client.activate(); client.poll(); client.receive("different Mac text")
+        XCTAssertEqual(local, "copied while inactive")
+        client.reset()
     }
 
     func testTimeoutQuarantinesLateLegacyRepliesUntilReconnect() async throws {

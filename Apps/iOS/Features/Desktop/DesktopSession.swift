@@ -132,6 +132,10 @@ final class DesktopSession: ObservableObject {
     func forget() { guard !busy else { return }; SecretStore.delete(certificateKey); paired = false; apps = []; refresh() }
     func launch(_ application: Application) {
         guard paired, !busy else { return }
+        guard TrunklineDesktopStreamAvailable() else {
+            error = "A desktop is open in another window. Close that desktop before opening this one."
+            return
+        }
         let geometry = DesktopStreamGeometry.size(
             maximumWidth: profile.maximumWidth,
             displayWidth: display.width,

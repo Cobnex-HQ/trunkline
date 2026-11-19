@@ -25,6 +25,10 @@ The native iPhone/iPad session list separates **Running sessions** from **Ended 
 
 In **Controls → Mac → Keep awake**, choose Automatic, Mac, or Mac and display. Active connections already keep the Mac and display awake. An extra hold lasts until changed or the Mac app quits. Closed-lid settings require local setup. Volume, media, brightness, apps, windows, clipboard and power actions are also in Controls. Some actions need Mac permissions.
 
+On iPad, use **New window** on the connection screen or **Mac menu → Open in new window**. Windows keep separate connections and navigation. Saved Macs are shared. The current native engine supports one live desktop and one Away connection per app process. Other windows can use local Terminal, Files and Controls. A Mac still accepts only one controlling connection.
+
+In **Controls → Clipboard**, use **Copy from Mac** or **Paste to Mac**. Paste updates the Mac clipboard without typing into its active app. Optional text syncing is saved for each Mac and runs only in the focused, active window. Two-way sync starts with future changes, preserving existing device clipboard text.
+
 ## Distribution plan
 
 Planned distribution: TestFlight and App Store for iPhone/iPad, plus a signed, notarized Mac download. See [release preparation](docs/RELEASING.md), [App Store submission](docs/APP_STORE.md), and [privacy](docs/PRIVACY.md).

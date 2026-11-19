@@ -28,6 +28,7 @@ public final class ClipboardTransfer: ObservableObject {
     private var generation = UUID()
     public init(timeout: Duration = .seconds(8)) { self.timeout = timeout }
     public func activate() {
+        if !active { lastRemote = nil }
         active = true
         revision = localRevision()
         schedulePolling()
@@ -71,7 +72,8 @@ public final class ClipboardTransfer: ObservableObject {
                 if !automatic { error = "Your clipboard changed. Copy from Mac again." }
                 return
             }
-            if !automatic || value != lastRemote {
+            let establishBaseline = automatic && mode == .bothDirections && lastRemote == nil
+            if !establishBaseline && (!automatic || value != lastRemote) {
                 // Do not erase a local clipboard just because the Mac has no text.
                 if !value.isEmpty { writeLocal(value); revision = localRevision() }
             }

@@ -55,6 +55,10 @@ final class ConnectionModel: ObservableObject {
     private var pendingTerminalRestore: UUID?
     private var handledLaunchResume = false
     private var isForeground = true
+    private var windowFocused = true
+    private let awakeID = UUID()
+    private static var awakeWindows: Set<UUID> = []
+    private let resumeStorageKey: String
     private var isUnlockingSaved = false
     @Published private(set) var hasLoadedTerminals = false
     @Published private(set) var isCreatingTerminal = false
@@ -143,7 +147,7 @@ final class ConnectionModel: ObservableObject {
     private let makeChannel: @MainActor (PairingDetails) -> SecureChannel
     private let containsSavedSecret: (String) -> Bool
     private let unlockSavedSecret: @MainActor (String) async throws -> Data?
-    init(defaults: UserDefaults = .standard, heartbeatInterval: TimeInterval = 5,
+    init(defaults: UserDefaults = .standard, automaticallyResume: Bool = true, resumeStorageKey: String = "resume-mac-id", heartbeatInterval: TimeInterval = 5,
          heartbeatTimeout: TimeInterval = 15, terminalCreationTimeout: TimeInterval = 15, terminalCloseTimeout: TimeInterval = 10,
          makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) },
          containsSavedSecret: @escaping (String) -> Bool = { SecretStore.contains($0) },
@@ -156,6 +160,8 @@ final class ConnectionModel: ObservableObject {
         precondition(terminalCreationTimeout > 0)
         precondition(terminalCloseTimeout > 0)
         self.defaults = defaults
+        self.resumeStorageKey = resumeStorageKey
+        self.handledLaunchResume = !automaticallyResume
         self.macStore = SavedMacStore(defaults: defaults)
         self.heartbeatInterval = heartbeatInterval
         self.heartbeatTimeout = heartbeatTimeout
@@ -252,7 +258,7 @@ final class ConnectionModel: ObservableObject {
             let ticket = try JSONDecoder().decode(RemoteAccessTicket.self, from: data)
             try ticket.validate()
             phase = .connecting; error = nil; connectionStatus = "Establishing a direct connection…"
-            UIApplication.shared.isIdleTimerDisabled = true
+            setAwake(true)
             let remote = RemoteConnection(); self.remote = remote
             remote.onLost = { [weak self] message in self?.disconnect(); self?.error = message }
             let id = UUID(); connectionID = id
@@ -329,9 +335,10 @@ final class ConnectionModel: ObservableObject {
                     defaults.set(connectionLink, forKey: "pairing-link")
                     if let paired = try? PairingDetails.parse(connectionLink) {
                         self.files.configureClipboard(macID: paired.fingerprint, defaults: self.defaults)
+                        if !self.windowFocused { self.files.clipboard.pause() }
                         self.macStore.save(paired, name: name, away: self.useAwayAccess)
                         self.savedMacs = self.macStore.macs
-                        self.defaults.set(paired.fingerprint, forKey: "resume-mac-id")
+                        self.defaults.set(paired.fingerprint, forKey: self.resumeStorageKey)
                     }
                     if shouldRememberPasscode {
                         do {
@@ -343,7 +350,7 @@ final class ConnectionModel: ObservableObject {
                     self.handledLaunchResume = true
                     connectionPasscode = ""
                     self.passcode = ""
-                    UIApplication.shared.isIdleTimerDisabled = true
+                    self.setAwake(true)
                     let heartbeat = Timer(timeInterval: self.heartbeatInterval, repeats: true) { [weak self] timer in
                         MainActor.assumeIsolated {
                         guard let self, self.connectionID == id, self.phase == .connected else { timer.invalidate(); return }
@@ -418,7 +425,7 @@ final class ConnectionModel: ObservableObject {
         resumeConnection = nil
         pendingTerminalRestore = nil
         handledLaunchResume = true
-        defaults.removeObject(forKey: "resume-mac-id")
+        defaults.removeObject(forKey: self.resumeStorageKey)
     }
     private func stopConnection() {
         cancelLocalProbe()
@@ -439,7 +446,7 @@ final class ConnectionModel: ObservableObject {
     func applicationDidBecomeActive() async {
         guard !Task.isCancelled else { return }
         isForeground = true
-        if phase == .connected { files.clipboard.activate(); return }
+        if phase == .connected { if windowFocused { files.clipboard.activate() }; return }
         guard phase == .setup else { return }
         if let resume = resumeConnection {
             guard pairingText == resume.pairingLink else { clearResume(); checkLocalRoute(); return }
@@ -449,7 +456,7 @@ final class ConnectionModel: ObservableObject {
             connect()
         } else if !handledLaunchResume {
             handledLaunchResume = true
-            if let id = selectedMacID, defaults.string(forKey: "resume-mac-id") == id, canUnlockSaved {
+            if let id = selectedMacID, defaults.string(forKey: self.resumeStorageKey) == id, canUnlockSaved {
                 await unlockSaved()
             }
         }
@@ -498,7 +505,29 @@ final class ConnectionModel: ObservableObject {
         localProbe?.onClose = nil; localProbe?.close(); localProbe = nil
     }
     func chooseAwayAccess() { useAwayAccess = true; error = nil }
-    deinit { pathMonitor.cancel() }
+    func refreshSavedMacs() {
+        macStore.refresh()
+        if savedMacs != macStore.macs { savedMacs = macStore.macs }
+    }
+    func setWindowFocused(_ focused: Bool) {
+        windowFocused = focused
+        if focused && isForeground && phase == .connected { files.clipboard.activate() }
+        else { files.clipboard.pause() }
+    }
+    func refreshAwakeState() { UIApplication.shared.isIdleTimerDisabled = !Self.awakeWindows.isEmpty }
+    private func setAwake(_ awake: Bool) {
+        if awake { Self.awakeWindows.insert(awakeID) }
+        else { Self.awakeWindows.remove(awakeID) }
+        UIApplication.shared.isIdleTimerDisabled = !Self.awakeWindows.isEmpty
+    }
+    deinit {
+        pathMonitor.cancel()
+        let id = awakeID
+        Task { @MainActor in
+            Self.awakeWindows.remove(id)
+            UIApplication.shared.isIdleTimerDisabled = !Self.awakeWindows.isEmpty
+        }
+    }
 
     func handleOperationError(_ text: String, context: OperationContext?) {
         switch context?.domain {
@@ -543,6 +572,6 @@ final class ConnectionModel: ObservableObject {
         phase = .setup; heartbeat?.invalidate(); heartbeat = nil
         handshakeTimeout?.cancel(); handshakeTimeout = nil
         roundTripMS = nil; pingSent = nil
-        UIApplication.shared.isIdleTimerDisabled = false
+        setAwake(false)
     }
 }

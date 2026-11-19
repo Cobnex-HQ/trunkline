@@ -5,6 +5,7 @@ import SwiftUI
 
 /// Switching is explicit: release this Mac before authenticating to another.
 struct MacSwitchMenu: View {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: ConnectionModel
     @State private var pending: SavedMac?
     @State private var addMac = false
@@ -15,6 +16,14 @@ struct MacSwitchMenu: View {
                 Button { pending = mac } label: {
                     Label(mac.name, systemImage: mac.id == model.selectedMacID ? "checkmark" : "desktopcomputer")
                 }.disabled(mac.id == model.selectedMacID)
+            }
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                Menu("Open in new window", systemImage: "macwindow.badge.plus") {
+                    ForEach(model.savedMacs) { mac in
+                        Button(mac.name) { openWindow(id: "mac", value: mac.id) }
+                    }
+                    Button("Add Mac") { openWindow(id: "workspace") }
+                }
             }
             Divider()
             Button("Add Mac", systemImage: "plus") { addMac = true }

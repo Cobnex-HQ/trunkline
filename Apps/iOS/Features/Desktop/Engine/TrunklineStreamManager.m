@@ -23,6 +23,39 @@
 #include <Limelight.h>
 #include <math.h>
 
+// The underlying C engine has process-wide state. Reserve it before any
+// stream starts and keep the lease until its actual asynchronous stop finishes.
+static NSUUID *desktopOwner;
+BOOL TrunklineDesktopStreamAvailable(void) {
+    @synchronized (StreamManager.class) { return desktopOwner == nil; }
+}
+
+@interface TrunklineOwnedConnection : Connection
+- (void)terminateWithCompletion:(dispatch_block_t)completion;
+@end
+@implementation TrunklineOwnedConnection {
+    dispatch_group_t _stopping;
+}
+- (void)terminate { [self terminateWithCompletion:nil]; }
+- (void)terminateWithCompletion:(dispatch_block_t)completion {
+    @synchronized (self) {
+        if (!_stopping) {
+            _stopping = dispatch_group_create();
+            dispatch_group_enter(_stopping);
+            LiInterruptConnection();
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                // LiStartConnection runs in this NSOperation. Wait for it to
+                // return before stopping, just as the upstream init lock does.
+                [self waitUntilFinished];
+                LiStopConnection();
+                dispatch_group_leave(self->_stopping);
+            });
+        }
+        if (completion) dispatch_group_notify(_stopping, dispatch_get_main_queue(), completion);
+    }
+}
+@end
+
 @interface StreamManager ()
 @property(atomic, strong) id<ConnectionCallbacks> elephantCallbacks;
 @end
@@ -31,11 +64,19 @@
     StreamConfiguration* _config;
 
     UIView* _renderView;
-    Connection* _connection;
+    TrunklineOwnedConnection* _connection;
+    NSUUID *_leaseToken;
+    BOOL _denied;
+    BOOL _stopRequested;
 }
 
 - (id) initWithConfig:(StreamConfiguration*)config renderView:(UIView*)view connectionCallbacks:(id<ConnectionCallbacks>)callbacks {
     self = [super init];
+    _leaseToken = [NSUUID UUID];
+    @synchronized (StreamManager.class) {
+        _denied = desktopOwner != nil;
+        if (!_denied) desktopOwner = _leaseToken;
+    }
     _config = config;
     _renderView = view;
     self.elephantCallbacks = callbacks;
@@ -46,6 +87,10 @@
 
 - (void)main {
     if (self.cancelled) { return; }
+    if (_denied) {
+        [self.elephantCallbacks launchFailed:@"A desktop is open in another window. Close that desktop before opening this one. Other Mac sessions can stay connected."];
+        return;
+    }
     [CryptoManager generateKeyPairUsingSSL];
     
     HttpManager* hMan = [[HttpManager alloc] initWithAddress:_config.host httpsPort:_config.httpsPort
@@ -109,7 +154,7 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.cancelled) { return; }
         VideoDecoderRenderer* renderer = [[VideoDecoderRenderer alloc] initWithView:self->_renderView callbacks:self.elephantCallbacks streamAspectRatio:(float)self->_config.width / (float)self->_config.height useFramePacing:self->_config.useFramePacing];
-        self->_connection = [[Connection alloc] initWithConfig:self->_config renderer:renderer connectionCallbacks:self.elephantCallbacks];
+        self->_connection = [[TrunklineOwnedConnection alloc] initWithConfig:self->_config renderer:renderer connectionCallbacks:self.elephantCallbacks];
         NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
         [opQueue addOperation:self->_connection];
     });
@@ -121,7 +166,17 @@
     // The controller owns this manager, so release its callback when ending the stream.
     // Serialize renderer/connection access with creation on the main queue.
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self->_connection terminate];
+        if (self->_stopRequested) return;
+        self->_stopRequested = YES;
+        NSUUID *token = self->_leaseToken;
+        dispatch_block_t release = ^{
+            @synchronized (StreamManager.class) {
+                if ([desktopOwner isEqual:token]) desktopOwner = nil;
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"TrunklineDesktopStopped" object:nil];
+        };
+        if (self->_connection) [self->_connection terminateWithCompletion:release];
+        else release();
         self->_connection = nil;
         self.elephantCallbacks = nil;
         self->_renderView = nil;

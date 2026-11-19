@@ -58,6 +58,7 @@ targets:
     - path: Tests/Companion/CompanionClientTests.swift
     - path: Tests/Companion/StreamKeyboardTests.m
     - path: Tests/Companion/StreamStatisticsTests.m
+    - path: Tests/Companion/StreamOwnershipTests.m
     - path: Tests/Fixtures/ClaudeStartup
       type: folder
       buildPhase: resources

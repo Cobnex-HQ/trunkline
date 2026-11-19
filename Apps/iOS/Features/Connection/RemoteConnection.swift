@@ -22,7 +22,7 @@ final class RemoteConnection {
         #if targetEnvironment(simulator)
         throw NSError(domain: "Remote", code: 1, userInfo: [NSLocalizedDescriptionKey: "Away access requires a physical device in this build."])
         #else
-        guard Self.active == nil else { throw NSError(domain: "Remote", code: 2, userInfo: [NSLocalizedDescriptionKey: "The previous connection is closing. Try again in a moment."]) }
+        guard Self.active == nil else { throw NSError(domain: "Remote", code: 2, userInfo: [NSLocalizedDescriptionKey: "Away access is already in use in another window or is still closing. Disconnect that Away connection before opening another."]) }
         let config = String(decoding: try JSONEncoder().encode(ticket.config), as: UTF8.self)
         Self.active = self; running = true; stopped = false
         trunkline_p2p_prepare()
