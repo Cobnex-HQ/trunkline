@@ -73,6 +73,16 @@ final class DesktopHost: ObservableObject {
                 try SecretStore.write(Data(password.utf8), key: "sunshine-management-password")
             }
     }
+    private var storageRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Trunkline/Sunshine", isDirectory: true)
+    }
+    func requirePairingReset() throws { try DesktopPairingReset.require(in: storageRoot) }
+    func resetPairings() async throws {
+        await shutdown()
+        guard retiring.isEmpty else { throw CocoaError(.fileWriteUnknown) }
+        try DesktopPairingReset.applyIfRequired(in: storageRoot)
+    }
     func start() async {
         guard process == nil, !starting else { return }
         starting = true; error = nil; status = "Preparing desktop…"
@@ -91,6 +101,8 @@ final class DesktopHost: ObservableObject {
             guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw CocoaError(.fileNoSuchFile) }
             let root = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("Trunkline/Sunshine", isDirectory: true)
+            guard retiring.isEmpty else { throw CocoaError(.fileWriteUnknown) }
+            try DesktopPairingReset.applyIfRequired(in: root)
             directory = root
             try FileManager.default.createDirectory(at: root.appendingPathComponent("credentials"), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)

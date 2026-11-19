@@ -11,7 +11,7 @@ import Network
                 let channel = SecureChannel(connection: connection)
                 peer = channel
                 channel.onMessage = { message in
-                    if case .authenticate("fixture-passcode") = message {
+                    if case .authenticate("fixture-passcode", _) = message {
                         authenticated = true
                         channel.send(.accepted(name: "Fixture Mac", display: .init(width: 3024, height: 1964)))
                     }
@@ -28,7 +28,7 @@ import Network
         defer { listener.cancel(); peer?.close() }
         for _ in 0..<100 where !listening { try await Task.sleep(for: .milliseconds(20)) }
         guard listening, let port = listener.port, port.rawValue != 0 else { fatalError("Fixture listener failed") }
-        let model = MacClientConnection(makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+        let model = MacClientConnection(deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         var disconnects = 0
         model.onDisconnect = { disconnects += 1 }
         let pairing = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "a", count: 64))

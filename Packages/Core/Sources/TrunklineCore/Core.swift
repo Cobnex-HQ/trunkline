@@ -65,7 +65,7 @@ public enum FileFeature: String, CaseIterable, Sendable {
     case mutations, folderUpload, cancellation, resumableTransfers
 }
 public enum WireMessage: Codable, Equatable, Sendable {
-    case authenticate(passcode: String)
+    case authenticate(passcode: String, device: DeviceClaim? = nil)
     case accepted(name: String, display: DesktopDisplay, fileFeatures: [String]? = nil)
     case failure(String, cause: ConnectionFailureCause? = nil)
     case startStream(profile: StreamProfile)

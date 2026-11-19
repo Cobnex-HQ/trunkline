@@ -146,11 +146,13 @@ final class ConnectionModel: ObservableObject {
     private let heartbeatTimeout: TimeInterval
     private let terminalCreationTimeout: TimeInterval
     private let terminalCloseTimeout: TimeInterval
+    private let deviceIdentity: @MainActor (String) throws -> DeviceClaim
     private let makeChannel: @MainActor (PairingDetails) -> SecureChannel
     private let containsSavedSecret: (String) -> Bool
     private let unlockSavedSecret: @MainActor (String) async throws -> Data?
     init(defaults: UserDefaults = .standard, automaticallyResume: Bool = true, resumeStorageKey: String = "resume-mac-id", heartbeatInterval: TimeInterval = 5,
          heartbeatTimeout: TimeInterval = 15, terminalCreationTimeout: TimeInterval = 15, terminalCloseTimeout: TimeInterval = 10,
+         deviceIdentity: @escaping @MainActor (String) throws -> DeviceClaim = { try DeviceIdentity.claim(macID: $0, name: UIDevice.current.name) },
          makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) },
          containsSavedSecret: @escaping (String) -> Bool = { SecretStore.contains($0) },
          unlockSavedSecret: @escaping @MainActor (String) async throws -> Data? = { key in
@@ -170,6 +172,7 @@ final class ConnectionModel: ObservableObject {
         self.terminalCreationTimeout = terminalCreationTimeout
         self.terminalCloseTimeout = terminalCloseTimeout
         self.makeChannel = makeChannel
+        self.deviceIdentity = deviceIdentity
         self.containsSavedSecret = containsSavedSecret
         self.unlockSavedSecret = unlockSavedSecret
         useAwayAccess = defaults.bool(forKey: "use-away-access")
@@ -300,7 +303,10 @@ final class ConnectionModel: ObservableObject {
                 guard let self, self.connectionID == id else { return }
                 self.phase = .authenticating
                 self.diagnostic.advance(.authentication)
-                channel?.send(.authenticate(passcode: connectionPasscode))
+                do {
+                    let device = try self.deviceIdentity(pairing.fingerprint)
+                    channel?.send(.authenticate(passcode: connectionPasscode, device: device))
+                } catch { self.disconnect(); self.error = error.localizedDescription }
             }
             let timeout = DispatchWorkItem { [weak self] in
                 guard let self, self.connectionID == id, self.phase != .connected else { return }

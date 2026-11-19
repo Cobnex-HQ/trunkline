@@ -10,6 +10,7 @@ struct HostSharingView: View {
     @State private var confirmation = ""
     @State private var authorizing = false
     @State private var copied = false
+    @State private var showingDevices = false
     private var needsCredentials: Bool { model.error?.contains("credentials") == true }
     private var runningSessions: [TerminalSessionInfo] { sessions.summaries.filter(\.isRunning) }
     private var sharingTitle: String {
@@ -113,6 +114,12 @@ struct HostSharingView: View {
                 }
             }
 
+            Section("Device access") {
+                Button("Devices…") { showingDevices = true }
+                Text(model.deviceAccess.requiresApproval ? "New devices require approval on this Mac." : "Manage trusted devices and revoke access.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 if model.hasPasscode {
                     DisclosureGroup("Connection passcode") {
@@ -134,6 +141,7 @@ struct HostSharingView: View {
             } header: { Text("Sharing settings") } footer: { Text("File access is limited to the selected folder.") }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showingDevices) { DeviceAccessView(model: model) }
         .onChange(of: model.pairingLink) { _, _ in copied = false }
     }
 

@@ -119,3 +119,11 @@ Device-sized virtual desktops are not enabled. See the [macOS feasibility check]
 Updated iPhone/iPad clients and Mac hosts support Retry and Cancel in Files, with byte progress. A dropped connection preserves the current transfer in its workspace window. Reconnect to the same Mac and choose Retry. Uploads use a private local snapshot, and downloads reject source-file changes. Existing destinations are never overwritten.
 
 Resume state lasts up to 30 minutes of inactivity while both app processes remain running. It does not survive quitting an app or restarting a device. Transfers stay limited to 512 MB per file, with at most four unfinished host transfers. Older hosts retain the previous transfer flow.
+
+### Device access
+
+On the Mac, open **My Mac → Sharing → Devices** to see trusted devices, approve requests or revoke access. Devices use a per-Mac Keychain identity and still need the connection passcode. The host stores only a hash of the device secret.
+
+For compatibility, a valid passcode initially trusts an updated client. Choose **Require approval for new devices** to restrict new connections. Revoking a device enables this restriction automatically, so a fresh identity cannot bypass revocation. Older clients without device identities cannot connect while approval is required.
+
+Revocation disconnects the current device and clears all desktop-stream pairings. Other trusted devices must pair their desktop again. Terminal processes keep running. An interrupted pairing reset is completed before the desktop engine can start again.

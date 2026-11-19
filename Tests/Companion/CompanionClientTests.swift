@@ -103,7 +103,7 @@ final class CompanionClientTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         func model(_ server: TerminalCreationServer, fingerprint: String) throws -> ConnectionModel {
             let port = try XCTUnwrap(server.listener.port)
-            let result = ConnectionModel(defaults: defaults, makeChannel: { _ in
+            let result = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
                 SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
             })
             result.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: fingerprint).link
@@ -183,7 +183,7 @@ final class CompanionClientTests: XCTestCase {
         var completion: CheckedContinuation<Data?, Never>?
         var unlocks = 0
         var connections = 0
-        let model = ConnectionModel(defaults: defaults, makeChannel: { pairing in
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { pairing in
             connections += 1
             return SecureChannel(pairing: pairing)
         }, containsSavedSecret: { $0 == SavedMac.credentialKey(pairing.fingerprint) }, unlockSavedSecret: { _ in
@@ -218,7 +218,7 @@ final class CompanionClientTests: XCTestCase {
         let pairing = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "d", count: 64))
         var unlocks = 0
         func makeModel() -> ConnectionModel {
-            ConnectionModel(defaults: defaults, makeChannel: { _ in
+            ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
                 SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
             }, containsSavedSecret: { $0 == SavedMac.credentialKey(pairing.fingerprint) }, unlockSavedSecret: { _ in
                 unlocks += 1
@@ -257,7 +257,7 @@ final class CompanionClientTests: XCTestCase {
         let suite = "resume-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = ConnectionModel(defaults: defaults, makeChannel: { _ in
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
             SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
         })
         defer { model.disconnect() }
@@ -298,7 +298,7 @@ final class CompanionClientTests: XCTestCase {
         let suite = "resume-busy-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = ConnectionModel(defaults: defaults, makeChannel: { _ in
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
             SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
         })
         defer { model.disconnect() }
@@ -326,7 +326,7 @@ final class CompanionClientTests: XCTestCase {
         let suite = "terminal-close-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = ConnectionModel(defaults: defaults, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "a", count: 64)).link
         model.passcode = "fixture-passcode"
@@ -751,7 +751,7 @@ final class CompanionClientTests: XCTestCase {
         let ticket = RemoteAccessTicket(config: .init(key: [1,2,3], expected: "12D3KooWfixture"), helper: "/ip4/203.0.113.1/udp/4001/quic-v1/p2p/12D3KooWfixture")
         let pairing = try PairingDetails(host: "192.0.2.1", port: port.rawValue, fingerprint: String(repeating: "f", count: 64), remote: ticket)
         let model = ConnectionModel(defaults: defaults,
-            makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = pairing.link
         model.networkChanged(available: true)
@@ -784,7 +784,7 @@ final class CompanionClientTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let model = ConnectionModel(defaults: defaults,
-            makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "1", count: 64)).link
         model.passcode = "fixture"
@@ -807,7 +807,7 @@ final class CompanionClientTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let port = try XCTUnwrap(server.listener.port)
         let model = ConnectionModel(defaults: defaults,
-            makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue,
             fingerprint: String(repeating: "a", count: 64)).link
@@ -834,7 +834,7 @@ final class CompanionClientTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let port = try XCTUnwrap(server.listener.port)
         let model = ConnectionModel(defaults: defaults,
-            makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue,
             fingerprint: String(repeating: "a", count: 64)).link
@@ -865,7 +865,7 @@ final class CompanionClientTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let port = try XCTUnwrap(server.listener.port)
         let model = ConnectionModel(defaults: defaults, terminalCreationTimeout: 0.15,
-            makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue,
             fingerprint: String(repeating: "a", count: 64)).link
@@ -1031,7 +1031,7 @@ final class CompanionClientTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let port = try XCTUnwrap(server.listener.port)
         let model = ConnectionModel(defaults: defaults, heartbeatInterval: 0.025, heartbeatTimeout: 0.15,
-            makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp)) })
         defer { model.disconnect() }
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue,
             fingerprint: String(repeating: "a", count: 64)).link
@@ -1552,7 +1552,7 @@ private struct TerminalKeyboardFixture: View {
                 channel.onMessage = { [weak self, weak channel] message in
                     guard let self else { return }
                     switch message {
-                    case let .authenticate(passcode):
+                    case let .authenticate(passcode, _):
                         XCTAssertEqual(passcode, "fixture-passcode")
                         channel?.send(.accepted(name: "Fixture Mac", display: .fallback))
                     case .ping:
@@ -1604,7 +1604,7 @@ private struct TerminalKeyboardFixture: View {
                 channel.onMessage = { [weak self, weak channel] message in
                     guard let self else { return }
                     switch message {
-                    case let .authenticate(passcode):
+                    case let .authenticate(passcode, _):
                         self.authentications += 1
                         self.authenticationPasscodes.append(passcode)
                         if let rejection = self.rejection { channel?.reject(rejection, cause: self.rejectionCause) }

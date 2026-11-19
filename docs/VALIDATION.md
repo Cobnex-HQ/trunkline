@@ -164,3 +164,11 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Tested a lost final upload acknowledgment, reconnecting mid-download, late replies, wrong tickets, replaced files, changed roots and cancellation after commit. A real HostFiles check resumes through two connection-scoped services. Legacy file integration still passes.
 - Resume lasts up to 30 minutes of inactivity within the existing app processes. There is no restart journal or background transfer entitlement. Four unfinished host transfers and the existing 512 MB per-file limit bound retained state. Expired host records are removed when the file service next receives a request.
 - Shared, tooling, Rust, Mac and companion regression results are retained in local build logs. Both paused-transfer UI checks passed, including Retry and Cancel, and screenshots were reviewed. Physical network interruptions still need device acceptance testing.
+
+## Device access — 2026-11-19
+
+- Core: 135 tests passed. Coverage includes revoked identities, new-ID and legacy-client rejection, local approval, spoofed IDs, old/new authentication wire compatibility, pairing reset recovery and preserving identities when Keychain is unavailable.
+- iPhone simulator: 91 companion tests passed, including reconnect and session restoration. Unsigned simulator fixtures inject identities because Keychain returns missing-entitlement status. Production uses Keychain without an interactive authentication prompt.
+- Mac app: 5 tests passed, 1 opt-in live test skipped. Native Mac connection and sharing-confirmation checks passed.
+- Revocation clears both desktop certificate formats before the engine can restart. A persistent marker keeps a failed or interrupted reset pending. Trusted devices must pair their desktop again afterward.
+- Real-device approval and desktop re-pairing acceptance remain to be tested on installed builds. This change has not been installed or pushed.

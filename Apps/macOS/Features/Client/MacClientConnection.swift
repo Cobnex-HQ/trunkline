@@ -18,9 +18,12 @@ final class MacClientConnection: ObservableObject {
     private var generation = UUID()
     private var watchdog: Task<Void, Never>?
     private var lastResponse = Date()
+    private let deviceIdentity: @MainActor (String) throws -> DeviceClaim
     private let makeChannel: @MainActor (PairingDetails) -> SecureChannel
-    init(makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) }) {
+    init(deviceIdentity: @escaping @MainActor (String) throws -> DeviceClaim = { try DeviceIdentity.claim(macID: $0, name: Host.current().localizedName ?? "Mac") },
+         makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) }) {
         self.makeChannel = makeChannel
+        self.deviceIdentity = deviceIdentity
     }
     func connect(pairing: PairingDetails, passcode: String, route: ConnectionDiagnostic.Route = .local) {
         if phase != .disconnected { disconnect() }
@@ -35,7 +38,10 @@ final class MacClientConnection: ObservableObject {
             guard let self, self.generation == id else { return }
             self.phase = .authenticating
             self.diagnostic.advance(.authentication)
-            channel?.send(.authenticate(passcode: passcode))
+            do {
+                let device = try self.deviceIdentity(pairing.fingerprint)
+                channel?.send(.authenticate(passcode: passcode, device: device))
+            } catch { self.disconnect(reason: error.localizedDescription) }
         }
         channel.onMessage = { [weak self] message in
             guard let self, self.generation == id else { return }

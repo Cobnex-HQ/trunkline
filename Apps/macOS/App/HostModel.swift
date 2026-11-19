@@ -9,6 +9,47 @@ import IOKit.pwr_mgt
 
 @MainActor
 final class HostModel: ObservableObject {
+    @Published private(set) var deviceAccess = DeviceAccessPolicy()
+    @Published private(set) var updatingDeviceAccess = false
+    private var devicePolicyURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Trunkline/device-access.json")
+    }
+    private func saveDeviceAccess(_ policy: DeviceAccessPolicy) throws {
+        try FileManager.default.createDirectory(at: devicePolicyURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try JSONEncoder().encode(policy).write(to: devicePolicyURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: devicePolicyURL.path)
+        deviceAccess = policy
+    }
+    func approveDevice(_ id: UUID) {
+        var policy = deviceAccess
+        policy.approve(id)
+        do { try saveDeviceAccess(policy) } catch { self.error = error.localizedDescription }
+    }
+    func requireDeviceApproval() {
+        var policy = deviceAccess
+        policy.requireApproval()
+        do { try saveDeviceAccess(policy) } catch { self.error = error.localizedDescription }
+    }
+    func revokeDevice(_ id: UUID) async {
+        guard !updatingDeviceAccess else { return }
+        updatingDeviceAccess = true
+        defer { updatingDeviceAccess = false }
+        let restartSharing = isRunning
+        do {
+            try sunshine.requirePairingReset()
+            var policy = deviceAccess
+            policy.revoke(id)
+            try saveDeviceAccess(policy)
+            stop()
+            resumableFiles = ResumableFileService()
+            try await sunshine.resetPairings()
+            if restartSharing { await start() }
+        } catch {
+            stop()
+            self.error = "Sharing is off. Device access could not be updated safely. " + error.localizedDescription
+        }
+    }
     @Published var status = "Remote access is off"
     @Published var isRunning = false
     @Published var isConnected = false
@@ -37,7 +78,7 @@ final class HostModel: ObservableObject {
         try self.keepAwake.applyRemotely(mode)
     })
     private var controlsTask: Task<Void, Never>?
-    private let resumableFiles = ResumableFileService()
+    private var resumableFiles = ResumableFileService()
     private var snapshotTask: Task<Void, Never>?
     private let desktopPairing = DesktopPairingCoordinator()
     private var startup = AccessStartup()
@@ -57,6 +98,14 @@ final class HostModel: ObservableObject {
     let terminals = TerminalSessions()
 
     init() {
+        if FileManager.default.fileExists(atPath: devicePolicyURL.path) {
+            do { deviceAccess = try JSONDecoder().decode(DeviceAccessPolicy.self, from: Data(contentsOf: devicePolicyURL)) }
+            catch {
+                deviceAccess.requireApproval()
+                try? sunshine.requirePairingReset()
+                self.error = "Saved device approvals could not be read. New connections require approval on this Mac."
+            }
+        }
         awayObservation = away.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         awayAwakeObservation = away.$enabled.combineLatest($isRunning).sink { [weak self] enabled, running in
             self?.keepAwake.setAwayAccessActive(enabled && running)
@@ -215,7 +264,7 @@ final class HostModel: ObservableObject {
             guard let self, let channel else { return }
             lastActivity = Date()
             if !authenticated {
-                guard case let .authenticate(passcode) = message, self.limiter.isAllowed() else {
+                guard case let .authenticate(passcode, device) = message, self.limiter.isAllowed() else {
                     channel.reject("Authentication failed. Try again in one minute.", cause: .rateLimited); return
                 }
                 let authentication = self.authentication
@@ -228,6 +277,20 @@ final class HostModel: ObservableObject {
                     channel.reject("Incorrect connection passcode. After five attempts, wait one minute.", cause: .authenticationRejected)
                     return
                 case .accepted: break
+                }
+                var policy = self.deviceAccess
+                let decision = policy.authenticate(device)
+                do { try self.saveDeviceAccess(policy) }
+                catch {
+                    self.admission.release(id)
+                    channel.reject("Device approval could not be saved on the Mac.", cause: .deviceApprovalRequired)
+                    return
+                }
+                guard decision == .allowed else {
+                    self.admission.release(id)
+                    let cause: ConnectionFailureCause = decision == .revoked ? .deviceRevoked : .deviceApprovalRequired
+                    channel.reject(cause.guidance, cause: cause)
+                    return
                 }
                 self.limiter.reset(); self.persistLimiter()
                 authenticated = true; self.isConnected = true

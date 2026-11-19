@@ -4,6 +4,7 @@ import Network
 public enum ConnectionFailureCause: String, Codable, Sendable {
     case networkUnavailable, networkDenied, addressNotFound, notListening, unreachable
     case identityUnverified, authenticationRejected, authenticationTimeout, hostBusy, rateLimited
+    case deviceApprovalRequired, deviceRevoked
     case directRouteUnavailable, clientBusy, interrupted, unknown
     public init(from decoder: Decoder) throws {
         self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unknown
@@ -33,6 +34,8 @@ public enum ConnectionFailureCause: String, Codable, Sendable {
         case .identityUnverified: "Secure connection not verified"
         case .authenticationRejected: "Passcode rejected"
         case .authenticationTimeout: "Authentication timed out"
+        case .deviceApprovalRequired: "Device approval needed"
+        case .deviceRevoked: "Device access revoked"
         case .hostBusy: "Mac already in use"
         case .rateLimited: "Too many attempts"
         case .clientBusy: "Away access already open"
@@ -51,6 +54,8 @@ public enum ConnectionFailureCause: String, Codable, Sendable {
         case .identityUnverified: "The secure connection failed verification. Check the Mac’s identity and pair again on a trusted network."
         case .authenticationRejected: "The Mac responded but rejected the passcode. Use the connection passcode shown in its sharing settings."
         case .authenticationTimeout: "The secure connection opened, but the Mac did not complete authentication. Check its sharing status and retry."
+        case .deviceApprovalRequired: "On the Mac, open My Mac → Sharing → Devices and approve this device, then reconnect. Older clients must be updated first."
+        case .deviceRevoked: "This Mac revoked the device’s access. Its owner must approve the device again in Sharing → Devices."
         case .hostBusy: "Disconnect the current controlling device before connecting here."
         case .rateLimited: "The Mac temporarily blocked further attempts. Wait one minute, then use the correct connection passcode."
         case .clientBusy: "Close the Away connection in the other window before opening another."
