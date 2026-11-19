@@ -140,3 +140,11 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - An isolated live host/client test on Apple silicon lowered and restored bitrate, verified the host’s bitrate cap, applied bitrate and continued frame delivery, and reported no playback failure. This does not measure sustained latency, packet-loss recovery on a real cellular route, thermals or battery use.
 - Passed 114 shared Swift tests, 36 tooling tests, 14 Rust tests, 86 companion tests on each simulator and the native capture/input/display/quality checks. The engine patch compiled and the staged bundle passed runtime dependency audit.
 - Mac client automatic adaptation is not yet wired to video-loss telemetry. It can use the same patched host, but its current quality selection stays manual.
+
+## Per-Mac preferences — 2026-11-19
+
+- Added migration from clipboard-only preferences and field-level fallback for unknown settings. Independent writes merge the changed field without resetting clipboard consent.
+- iPhone/iPad desktop settings persist per Mac. Both clients restore display choice once per connection, save it only after host acknowledgment and keep user changes during polling. Supported monitor identities survive capture-number changes. Unidentifiable monitors use a host-app session identity to avoid matching a reused capture number after restart.
+- Passed 119 shared Swift tests, 88 companion tests on each simulator and five Mac tests. The optional live-stream test was skipped in this Mac run and passed separately for adaptive streaming.
+- Regression testing exposed an intermittent CLI cancellation failure. Keeping one interrupt listener across event-loop iterations fixed the listener gap. The full 14-test Rust suite passed with eight cancellation iterations, unchanged deadlines and backoff checks. Tooling tests also passed.
+- Physical display unplug/replug and two real Macs remain acceptance checks. These changes are committed source, not installed device updates.

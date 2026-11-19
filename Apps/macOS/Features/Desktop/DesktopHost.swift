@@ -240,13 +240,28 @@ final class DesktopHost: ObservableObject {
         guard selected.isAvailable, selected.preferredID == id else { throw MacControlError.missingDisplay }
         displaySelection = selected
     }
+    private let displayIdentitySession = UUID().uuidString
     private func nativeDisplayNames(_ selection: DesktopDisplaySelection) -> DesktopDisplaySelection {
         var names: [String: String] = [:]
+        var identities: [String: String] = [:]
         for screen in NSScreen.screens {
             guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { continue }
-            names[String(id.uint32Value)] = screen.localizedName
+            let display = id.uint32Value
+            names[String(display)] = screen.localizedName
+            let serial = CGDisplaySerialNumber(display)
+            if serial > 0 || CGDisplayIsBuiltin(display) != 0 {
+                identities[String(display)] = "display:\(CGDisplayVendorNumber(display)):\(CGDisplayModelNumber(display)):\(serial):\(CGDisplayIsBuiltin(display))"
+            } else {
+                // No stable public identity is available. Never match a reused
+                // display number after the host restarts.
+                identities[String(display)] = "session:\(displayIdentitySession):\(display)"
+            }
         }
-        return selection.withDisplayNames(names)
+        let duplicates = Dictionary(grouping: identities.values, by: { $0 }).filter { $0.value.count > 1 }.keys
+        for (id, value) in identities where duplicates.contains(value) {
+            identities[id] = "session:\(displayIdentitySession):\(id)"
+        }
+        return selection.withDisplayNames(names, identities: identities)
     }
     private func approveID(_ id: String, pin: String, name: String) async throws {
         let token = try await csrf()

@@ -48,9 +48,7 @@ final class ClientFiles: ObservableObject {
         clipboard.activate()
     }
     func setClipboardSyncMode(_ mode: ClipboardSyncMode) {
-        var preferences = clipboardPreferences.load(clipboardMacID)
-        preferences.clipboard = mode
-        clipboardPreferences.save(preferences, for: clipboardMacID)
+        clipboardPreferences.update(clipboardMacID) { $0.clipboard = mode }
         clipboard.mode = mode
     }
     var isBusy: Bool { transferName != nil || mutation != nil || cancellation != nil || isLoading || requiresReconnect }

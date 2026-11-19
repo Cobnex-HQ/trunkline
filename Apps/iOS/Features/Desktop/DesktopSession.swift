@@ -15,13 +15,15 @@ final class DesktopSession: ObservableObject {
     @Published var error: String?
     @Published var stream: StreamConfiguration?
     @Published var presenting = false
-    @Published var profile: StreamProfile = .responsive
-    @Published var inputMode: DesktopInputMode = .directTouch
-    @Published var pacing: StreamPacingMode = .lowLatency
-    @Published var stats = false
-    @Published var adaptiveQuality = true
+    @Published var profile: StreamProfile = .responsive { didSet { persist(\.profile, profile) } }
+    @Published var inputMode: DesktopInputMode = .directTouch { didSet { persist(\.inputMode, inputMode) } }
+    @Published var pacing: StreamPacingMode = .lowLatency { didSet { persist(\.pacing, pacing) } }
+    @Published var stats = false { didSet { persist(\.statistics, stats) } }
+    @Published var adaptiveQuality = true { didSet { persist(\.adaptiveQuality, adaptiveQuality) } }
     private(set) var engine: TrunklineStream
     private let engineFactory: () -> TrunklineStream
+    private var preferenceID: String?
+    private var preferences = MacPreferencesStore()
     private let discoveryTimeout: Duration
     private let pairingTimeout: Duration
     private var deadline: Task<Void, Never>?
@@ -36,6 +38,18 @@ final class DesktopSession: ObservableObject {
          engineFactory: @escaping () -> TrunklineStream = { TrunklineStream() }) {
         self.discoveryTimeout = discoveryTimeout; self.pairingTimeout = pairingTimeout
         self.engineFactory = engineFactory; self.engine = engineFactory()
+    }
+    func configurePreferences(macID: String, store: MacPreferencesStore) {
+        preferenceID = nil
+        preferences = store
+        let saved = store.load(macID)
+        profile = saved.profile; inputMode = saved.inputMode; pacing = saved.pacing
+        stats = saved.statistics; adaptiveQuality = saved.adaptiveQuality
+        preferenceID = macID
+    }
+    private func persist<Value>(_ key: WritableKeyPath<MacPreferences, Value>, _ value: Value) {
+        guard let preferenceID else { return }
+        preferences.update(preferenceID) { $0[keyPath: key] = value }
     }
     func open(pairingLink: String, approvePairing: @escaping (DesktopPairRequest) -> Void) {
         guard address.isEmpty else { return }
@@ -241,6 +255,7 @@ struct DesktopView: View {
                 }
             }
             .task {
+                if let id = model.selectedMacID { desktop.configurePreferences(macID: id, store: model.preferences) }
                 model.onDesktopError = { [weak desktop] message, token in desktop?.receivePairingFailure(message, token: token) }
                 desktop.display = model.desktopDisplay
                 desktop.open(pairingLink: model.sessionPairingLink.isEmpty ? model.pairingText : model.sessionPairingLink) { model.send(.pairDesktop($0)) }

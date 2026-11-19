@@ -22,6 +22,7 @@ final class ConnectionModel: ObservableObject {
     }
     @Published private(set) var savedMacs: [SavedMac] = []
     private var macStore: SavedMacStore
+    var preferences: MacPreferencesStore { MacPreferencesStore(defaults: defaults) }
     var selectedMacID: String? { (try? PairingDetails.parse(pairingText))?.fingerprint }
     @Published var offerAwayAccess = false
     @Published var connectionStatus = ""
@@ -183,6 +184,10 @@ final class ConnectionModel: ObservableObject {
         files.clipboard.writeLocal = { UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic: $0]], options: [.localOnly: true]) }
         files.onReconnect = { [weak self] in self?.disconnect() }
         controls.send = { [weak self] in self?.send($0) }
+        controls.onDisplaySelection = { [weak self] display in
+            guard let self, let id = self.selectedMacID else { return }
+            self.preferences.update(id) { $0.displayID = display.persistentID ?? display.id }
+        }
     }
     private var savedCredentialKey: String? {
         guard let pairing = try? PairingDetails.parse(pairingText) else { return nil }
@@ -303,7 +308,12 @@ final class ConnectionModel: ObservableObject {
             channel.onMessage = { [weak self] message in
                 guard let self, self.connectionID == id else { return }
                 if self.phase == .connected {
-                    if self.controls.handle(message) { return }
+                    if self.controls.handle(message) {
+                        if case .controls = message, let id = self.selectedMacID {
+                            self.controls.restoreDisplay(from: self.preferences.load(id))
+                        }
+                        return
+                    }
                     switch message {
                     case let .terminals(sessions):
                         self.receiveTerminalSessions(sessions)

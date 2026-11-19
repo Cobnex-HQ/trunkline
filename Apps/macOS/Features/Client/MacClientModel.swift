@@ -14,7 +14,14 @@ final class MacClientModel: ObservableObject {
     @Published var status = ""
     @Published var preparing = false
     @Published var streaming = false
-    @Published var profile: StreamProfile = .balanced
+    @Published var profile: StreamProfile = .balanced {
+        didSet {
+            guard let preferenceID else { return }
+            preferences.update(preferenceID) { $0.profile = profile }
+        }
+    }
+    private let preferences = MacPreferencesStore(defaults: UserDefaults(suiteName: "com.trunkline.macclient")!)
+    private var preferenceID: String?
     @Published private(set) var savedMacs: [SavedMac] = []
     private var store = SavedMacStore(defaults: UserDefaults(suiteName: "com.trunkline.macclient")!)
     private var pairing: PairingDetails?
@@ -27,7 +34,7 @@ final class MacClientModel: ObservableObject {
     private var changes: AnyCancellable?
     init() {
         savedMacs = store.macs
-        if let saved = savedMacs.first(where: { $0.id == store.selectedID }) { pairingText = saved.link; away = saved.away }
+        if let saved = savedMacs.first(where: { $0.id == store.selectedID }) { pairingText = saved.link; away = saved.away; loadPreferences(saved.id) }
         connection.onDisconnect = { [weak self] in self?.stopDesktop(); self?.remote?.stop(); self?.controls.reset() }
         connection.onMessage = { [weak self] message in
             guard let self else { return }
@@ -40,18 +47,33 @@ final class MacClientModel: ObservableObject {
                 self.stopDesktop(); self.error = message
             }
             _ = self.controls.handle(message)
+            if case .controls = message, let id = self.pairing?.fingerprint {
+                self.controls.restoreDisplay(from: self.preferences.load(id))
+            }
         }
         controls.send = { [weak self] in self?.connection.send($0) }
+        controls.onDisplaySelection = { [weak self] display in
+            guard let self, let id = self.pairing?.fingerprint else { return }
+            self.preferences.update(id) { $0.displayID = display.persistentID ?? display.id }
+        }
         changes = connection.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+    private func loadPreferences(_ id: String) {
+        preferenceID = nil
+        profile = preferences.contains(id) ? preferences.load(id).profile : .balanced
+        preferenceID = id
     }
     func select(_ saved: SavedMac) {
         disconnect()
         store.select(saved.id)
         pairingText = saved.link; away = saved.away; passcode = ""
+        loadPreferences(saved.id)
     }
     func remove(_ saved: SavedMac) {
         if pairing?.fingerprint == saved.id { disconnect() }
         store.remove(saved.id); savedMacs = store.macs
+        preferences.remove(saved.id)
+        if preferenceID == saved.id { preferenceID = nil }
         if pairingText == saved.link { pairingText = ""; passcode = "" }
         SecretStore.delete(RemoteAccessTicket.storageKey(saved.id))
         UserDefaults.standard.removeObject(forKey: "mac-desktop-cert.\(saved.id)")
@@ -69,6 +91,7 @@ final class MacClientModel: ObservableObject {
             }
             if let ticket = source.remote { try SecretStore.write(JSONEncoder().encode(ticket), key: RemoteAccessTicket.storageKey(source.fingerprint)) }
             let local = try PairingDetails(host: source.host, port: source.port, fingerprint: source.fingerprint)
+            if preferenceID != local.fingerprint { loadPreferences(local.fingerprint) }
             pairing = local; pairingText = local.link
             error = nil
             let id = UUID(); generation = id

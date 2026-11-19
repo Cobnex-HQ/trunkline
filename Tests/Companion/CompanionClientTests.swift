@@ -11,6 +11,51 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testDesktopPreferencesPersistPerMacWithoutOverwritingClipboard() {
+        let suite = "desktop-preferences-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = MacPreferencesStore(defaults: defaults)
+        let desktop = DesktopSession()
+        desktop.configurePreferences(macID: "first", store: store)
+        desktop.profile = .detail; desktop.inputMode = .trackpad; desktop.adaptiveQuality = false
+        store.update("first") { $0.clipboard = .fromMac }
+        desktop.stats = true
+        desktop.configurePreferences(macID: "second", store: store)
+        XCTAssertEqual(desktop.profile, .responsive)
+        XCTAssertEqual(desktop.inputMode, .directTouch)
+        desktop.configurePreferences(macID: "first", store: store)
+        XCTAssertEqual(desktop.profile, .detail)
+        XCTAssertEqual(desktop.inputMode, .trackpad)
+        XCTAssertFalse(desktop.adaptiveQuality)
+        XCTAssertTrue(desktop.stats)
+        XCTAssertEqual(store.load("first").clipboard, .fromMac)
+    }
+    func testDisplayPreferenceRestoresOnceAndOnlySavesAcknowledgedSelection() {
+        let controls = ClientControls()
+        var requests: [WireMessage] = [], saved: [String] = []
+        controls.send = { requests.append($0) }
+        controls.onDisplaySelection = { saved.append($0.persistentID ?? $0.id) }
+        var preferences = MacPreferences(); preferences.displayID = "physical-monitor"
+        var state = MacControlSnapshot(apps: [], windows: [], displays: [], volume: nil,
+            muted: nil, accessibility: true, frontmostApp: "Finder")
+        state.desktopDisplays = DesktopDisplaySelection(displays: [
+            DesktopCaptureDisplay(id: "7", name: "Built-in", width: 3024, height: 1964),
+            DesktopCaptureDisplay(id: "42", name: "External", width: 1920, height: 1080, persistentID: "physical-monitor")
+        ], activeID: "7")
+        _ = controls.handle(.controls(state))
+        controls.restoreDisplay(from: preferences)
+        XCTAssertTrue(saved.isEmpty)
+        guard case let .control(request) = requests.last else { return XCTFail("Expected display restore") }
+        XCTAssertEqual(request.action, .desktopDisplay("42"))
+        _ = controls.handle(.controlResult(MacControlResult(id: request.id)))
+        XCTAssertEqual(saved, ["physical-monitor"])
+        let count = requests.count
+        controls.restoreDisplay(from: preferences)
+        XCTAssertEqual(requests.count, count, "Polling must not undo a later user selection")
+        controls.reset()
+    }
+
     func testAdaptiveQualityRequiresHostCapabilityAndStopsAfterRejectedUpdate() throws {
         let controls = ClientControls()
         let adaptive = AdaptiveDesktopQuality()

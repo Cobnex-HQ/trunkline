@@ -3,10 +3,12 @@ import Foundation
 /// A capture identity is valid for the current Mac display topology, not a list position.
 public struct DesktopCaptureDisplay: Codable, Equatable, Identifiable, Sendable {
     public let id: String
+    public let persistentID: String?
     public let name: String
     public let width: Int
     public let height: Int
-    public init(id: String, name: String, width: Int, height: Int) {
+    public init(id: String, name: String, width: Int, height: Int, persistentID: String? = nil) {
+        self.persistentID = persistentID
         self.id = id; self.name = name; self.width = width; self.height = height
     }
     public var geometry: DesktopDisplay { DesktopDisplay(width: width, height: height) }
@@ -35,12 +37,12 @@ public struct DesktopDisplaySelection: Codable, Equatable, Sendable {
         displays.first { $0.id == (preferredID ?? activeID) }
     }
     /// Add native display names without changing capture identities, order or state.
-    public func withDisplayNames(_ names: [String: String]) -> Self {
+    public func withDisplayNames(_ names: [String: String], identities: [String: String] = [:]) -> Self {
         let named = displays.map { display in
             let name = names[display.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
             return DesktopCaptureDisplay(id: display.id,
                 name: name.flatMap { $0.isEmpty ? nil : $0 } ?? display.name,
-                width: display.width, height: display.height)
+                width: display.width, height: display.height, persistentID: identities[display.id] ?? display.persistentID)
         }
         return Self(displays: named, activeID: activeID, preferredID: preferredID,
                     switching: switching, error: error, status: status, supported: supported)

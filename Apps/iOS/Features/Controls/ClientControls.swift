@@ -15,6 +15,9 @@ final class ClientControls: ObservableObject {
     @Published private(set) var isUserRefreshing = false
     @Published private(set) var selectedWindowAppPID: Int32?
     var send: ((WireMessage) -> Void)?
+    var onDisplaySelection: ((DesktopCaptureDisplay) -> Void)?
+    private var pendingDisplay: DesktopCaptureDisplay?
+    private var restoredDisplay = false
     private var timeout: Task<Void, Never>?
     private var refreshTimeout: Task<Void, Never>?
     private var refreshID: UUID?
@@ -99,6 +102,8 @@ final class ClientControls: ObservableObject {
             }
         }
         do { try action.validate() } catch { self.error = error.localizedDescription; return }
+        pendingDisplay = nil
+        if case let .desktopDisplay(id) = action { pendingDisplay = snapshot?.desktopDisplays?.displays.first { $0.id == id } }
         let request = MacControlRequest(action: action)
         pending = request.id; error = nil
         timeout?.cancel()
@@ -106,6 +111,7 @@ final class ClientControls: ObservableObject {
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
             guard let self, self.pending == request.id else { return }
             self.pending = nil; self.error = "The Mac didn’t confirm this action. Refresh before trying again."
+            self.pendingDisplay = nil
             self.lastResult = MacControlResult(id: request.id, error: self.error)
         }
         send?(.control(request))
@@ -131,16 +137,26 @@ final class ClientControls: ObservableObject {
             return true
         case let .controlResult(result):
             guard result.id == pending else { return true }
+            let display = pendingDisplay; pendingDisplay = nil
             timeout?.cancel(); timeout = nil; pending = nil; error = result.error; lastResult = result
+            if result.error == nil, let display { onDisplaySelection?(display) }
             refresh(); return true
         default: return false
         }
+    }
+    func restoreDisplay(from preferences: MacPreferences) {
+        guard !restoredDisplay, pending == nil, let selection = snapshot?.desktopDisplays,
+              selection.isAvailable, !selection.displays.isEmpty, !selection.switching else { return }
+        restoredDisplay = true
+        guard let display = preferences.availableDisplay(in: selection.displays),
+              display.id != (selection.preferredID ?? selection.activeID) else { return }
+        perform(.desktopDisplay(display.id))
     }
     func reset() {
         timeout?.cancel(); timeout = nil
         refreshTimeout?.cancel(); refreshTimeout = nil
         isRefreshing = false; isUserRefreshing = false; refreshError = nil
         refreshID = nil; selectedWindowAppPID = nil; queuedWindowRefresh = false; expandedWindowList = false
-        pending = nil; snapshot = nil; error = nil; lastResult = nil
+        pending = nil; snapshot = nil; error = nil; lastResult = nil; pendingDisplay = nil; restoredDisplay = false
     }
 }

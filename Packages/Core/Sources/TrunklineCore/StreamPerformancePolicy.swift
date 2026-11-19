@@ -1,13 +1,13 @@
 import Foundation
 
-public enum StreamPacingMode: String, CaseIterable, Identifiable, Sendable {
+public enum StreamPacingMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case lowLatency, smooth
     public var id: String { rawValue }
     public var title: String { self == .lowLatency ? "Lowest latency" : "Smoother motion" }
     public var usesFramePacing: Bool { self == .smooth }
 }
 
-public enum DesktopInputMode: String, CaseIterable, Identifiable, Sendable {
+public enum DesktopInputMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case directTouch, trackpad
     public var id: String { rawValue }
     public var title: String { self == .directTouch ? "Direct touch" : "Trackpad" }

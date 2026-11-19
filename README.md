@@ -72,6 +72,8 @@ In the desktop viewer, **Keyboard** opens the remote keyboard. In direct-touch m
 
 On iPhone and iPad, **Desktop → Adapt to network** adjusts video bitrate below the selected quality limit and restores it gradually when loss clears. It requires the updated Mac engine. The desktop keeps the same resolution and proportions. Encoder changes can cause a brief pause. Older hosts keep their selected fixed quality.
 
+Quality, input mode, motion, statistics, adaptive quality and clipboard consent are remembered per Mac on iPhone and iPad. The Mac client remembers quality and display selection. Display preferences use a persistent monitor identity when available. A missing monitor falls back to the host’s current display. Monitors without a reliable identity may need selecting again after restarting the Mac app.
+
 ## Repository map
 
 | Directory | Responsibility |
