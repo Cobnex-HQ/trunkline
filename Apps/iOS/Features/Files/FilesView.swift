@@ -41,6 +41,7 @@ struct FilesView: View {
     var body: some View {
         NavigationStack {
             List {
+                ResumableTransferSection(transfer: files.resumable)
                 if let name = files.transferName {
                     TrunklineSection("Transferring") {
                         Text(name).font(.subheadline.weight(.medium)).lineLimit(textSize.isAccessibilitySize ? nil : 2)
@@ -189,5 +190,48 @@ struct FilesView: View {
     @ViewBuilder private func fileActions(_ file: RemoteFile) -> some View {
         Button("Rename", systemImage: "pencil") { renameTarget = file; newName = file.name; editingName = true }
         Button("Move to Trash", systemImage: "trash", role: .destructive) { trashTarget = file }
+    }
+}
+
+
+private struct ResumableTransferSection: View {
+    @ObservedObject var transfer: ResumableFileClient
+    var body: some View {
+        if transfer.state != .idle {
+            TrunklineSection {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(transfer.name).font(.subheadline.weight(.medium))
+                    if transfer.state == .preparing { ProgressView("Preparing file…") }
+                    else {
+                        ProgressView(value: transfer.progress)
+                        if transfer.total > 0 {
+                            Text("\(ByteCountFormatter.string(fromByteCount: transfer.received, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: transfer.total, countStyle: .file))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let error = transfer.error { Text(error).font(.callout).foregroundStyle(.secondary) }
+                }.padding(.vertical, 4)
+                if let url = transfer.downloadedURL {
+                    ShareLink(item: url) { Label("Save or share file", systemImage: "square.and.arrow.up") }
+                }
+                if transfer.state == .paused {
+                    Button("Retry", systemImage: "arrow.clockwise") { transfer.retry() }.disabled(!transfer.connected)
+                }
+                if transfer.state == .cancelling {
+                    Button("Retry cancellation") { transfer.cancel() }.disabled(!transfer.connected)
+                } else if transfer.state == .completed {
+                    Button("Done") { transfer.reset() }
+                } else {
+                    Button("Cancel transfer", role: .destructive) { transfer.cancel() }
+                }
+            } header: {
+                Text(transfer.state == .completed ? "Transfer complete" : "File transfer")
+            } footer: {
+                if transfer.state == .paused {
+                    Text("Partial transfers can resume for 30 minutes while both apps remain running.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }

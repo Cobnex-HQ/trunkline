@@ -120,6 +120,17 @@ struct ExperienceReview: View {
         let shownEntries = section == "files-empty" ? [] : entries
         model.files.entries = shownEntries
         model.files.clipboardText = "Project notes\nReview the latest build on Studio Mac."
+        if section == "files-resume" {
+            let transfer = model.files.resumable
+            transfer.connect(macID: "review")
+            transfer.send = { [weak transfer] id, request in
+                var reply = FileTransferReply(id: request.ticket.id)
+                if case .cancel = request { reply.cancelled = true }
+                else { reply.error = "Transfer paused. Retry to continue from the last confirmed position." }
+                transfer?.receive(id: id, reply: reply)
+            }
+            transfer.download(path: "Design notes.pdf", name: "Design notes.pdf")
+        }
         if section == "files-transfer" {
             model.files.transferName = "Design notes.pdf"
             model.files.progress = 0.42

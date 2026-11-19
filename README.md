@@ -113,3 +113,9 @@ Open **Connection details** from a connection error or the Desktop options menu.
 On iPadOS 27 or later, connect a display and open **Desktop → Spaces and windows → Use external display**. The display shows the full Mac desktop at its original aspect ratio. The iPad keeps its preview, touch input, keyboard and controls. Output is off by default, stops when the app becomes inactive and is cleared when the desktop closes. It shares the existing connection but uses an additional video decoder while enabled.
 
 Device-sized virtual desktops are not enabled. See the [macOS feasibility check](docs/DISPLAY-FEASIBILITY.md).
+
+### Resumable files
+
+Updated iPhone/iPad clients and Mac hosts support Retry and Cancel in Files, with byte progress. A dropped connection preserves the current transfer in its workspace window. Reconnect to the same Mac and choose Retry. Uploads use a private local snapshot, and downloads reject source-file changes. Existing destinations are never overwritten.
+
+Resume state lasts up to 30 minutes of inactivity while both app processes remain running. It does not survive quitting an app or restarting a device. Transfers stay limited to 512 MB per file, with at most four unfinished host transfers. Older hosts retain the previous transfer flow.

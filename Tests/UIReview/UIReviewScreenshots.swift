@@ -606,6 +606,16 @@ final class UIReviewScreenshots: XCTestCase {
         capture("clipboard", ready: app.navigationBars["Clipboard"])
     }
 
+    func testResumableTransferLayout() {
+        launch("files-resume")
+        capture("files-paused", ready: app.buttons["Retry"])
+        XCTAssertTrue(app.buttons["Cancel transfer"].isHittable)
+        tap("Retry")
+        XCTAssertTrue(app.buttons["Retry"].waitForExistence(timeout: 5))
+        tap("Cancel transfer")
+        XCTAssertTrue(app.buttons["Open Documents"].isEnabled)
+    }
+
     func testFilesScreens() {
         launch("files")
         capture("files", ready: app.navigationBars["Files"])

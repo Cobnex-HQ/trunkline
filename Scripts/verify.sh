@@ -14,6 +14,8 @@ python3 Scripts/test-desktop-supervisor.py .build/TrunklineDesktopSupervisor
 swift test --package-path Packages/Core --scratch-path .build/core --disable-sandbox
 swiftc -parse-as-library Packages/Core/Sources/TrunklineCore/*.swift Apps/macOS/Features/Files/HostFiles.swift Apps/iOS/Features/Files/ClientFiles.swift Tests/Native/HostFilesCheck.swift -o .build/host-files-check
 .build/host-files-check
+swiftc -parse-as-library Packages/Core/Sources/TrunklineCore/*.swift Apps/macOS/Features/Files/HostFiles.swift Tests/Native/ResumableHostCheck.swift -o .build/resumable-host-check
+.build/resumable-host-check
 swiftc -parse-as-library Packages/Core/Sources/TrunklineCore/*.swift Apps/iOS/Features/Files/ClientFiles.swift Tests/Native/ClientFilesCheck.swift -o .build/client-files-check
 .build/client-files-check
 swiftc -parse-as-library Packages/Core/Sources/TrunklineCore/*.swift Apps/iOS/Features/Files/ClientFiles.swift Tests/Native/FileCompatibilityCheck.swift -o .build/file-compatibility-check

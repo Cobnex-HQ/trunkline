@@ -62,7 +62,7 @@ public struct OperationContext: Codable, Equatable, Sendable {
 }
 /// Strings on the wire let future hosts advertise features older clients can ignore.
 public enum FileFeature: String, CaseIterable, Sendable {
-    case mutations, folderUpload, cancellation
+    case mutations, folderUpload, cancellation, resumableTransfers
 }
 public enum WireMessage: Codable, Equatable, Sendable {
     case authenticate(passcode: String)
@@ -96,6 +96,8 @@ public enum WireMessage: Codable, Equatable, Sendable {
     case fileMutationResult(id: UUID, error: String?)
     case listFiles(path: String)
     case fileList(path: String, entries: [RemoteFile])
+    case resumableFile(id: UUID, request: FileTransferRequest)
+    case resumableFileReply(id: UUID, reply: FileTransferReply)
     case beginUpload(name: String, size: Int64)
     case beginUploadInFolder(parent: String, name: String, size: Int64)
     case cancelFileTransfer(id: UUID)

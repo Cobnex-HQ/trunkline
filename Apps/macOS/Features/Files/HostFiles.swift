@@ -10,7 +10,7 @@ final class HostFiles {
     private let lifetime = FileRequestLifetime()
     private var pending = 0
 
-    init(root: URL?) { worker = HostFileWorker(root: root) }
+    init(root: URL?, resumable: ResumableFileService = ResumableFileService()) { worker = HostFileWorker(root: root, resumable: resumable) }
 
     func handle(_ message: WireMessage, send: @escaping @MainActor (WireMessage) -> Void) -> Bool {
         switch message {
@@ -26,7 +26,7 @@ final class HostFiles {
             }
             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
             send(.clipboard(NSPasteboard.general.string(forType: .string) ?? "")); return true
-        case .mutateFile, .listFiles, .beginUpload, .beginUploadInFolder, .cancelFileTransfer, .uploadChunk, .download, .requestChunk:
+        case .resumableFile, .mutateFile, .listFiles, .beginUpload, .beginUploadInFolder, .cancelFileTransfer, .uploadChunk, .download, .requestChunk:
             guard !lifetime.isCancelled else { return true }
             guard pending < 8 else {
                 send(.operationError("Too many file requests. Wait for the current operation.", context: .init(.files))); return true
@@ -67,11 +67,14 @@ private final class HostFileWorker: @unchecked Sendable {
     let root: URL?
     private var upload: (UUID, IncomingTransfer)?
     private var download: (id: UUID, handle: FileHandle, size: Int64, offset: Int64)?
-    init(root: URL?) { self.root = root }
+    private let resumable: ResumableFileService
+    init(root: URL?, resumable: ResumableFileService) { self.root = root; self.resumable = resumable }
     func handle(_ message: WireMessage, send: (WireMessage) -> Void) -> Bool {
         dispatchPrecondition(condition: .notOnQueue(.main))
         do {
             switch message {
+            case let .resumableFile(id, request):
+                send(.resumableFileReply(id: id, reply: resumable.handle(request, root: root)))
             case let .cancelFileTransfer(id):
                 upload = nil
                 try? download?.handle.close(); download = nil

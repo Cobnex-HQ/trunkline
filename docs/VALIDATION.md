@@ -157,3 +157,10 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Passed 90 companion tests per simulator, including source ownership, keyframe recovery and decoder backpressure. External-display controls passed on iPad and stayed absent on iPhone.
 - The simulator displayed actual test frames through the external scene at 720 × 480 and 1920 × 1080. The wider display preserved the 3:2 test image with side bars. The iPad retained its controls. Backgrounding cleared the external screen to black, and returning restored the test image. These are generated test frames, not a live hardware-decoded Mac stream.
 - The unsigned iOS Release build passed for the device SDK, including the Rust transport. It was not installed or submitted. Physical USB-C/AirPlay display, compressed-stream playback, disconnect/reconnect, hardware keyboard routing, sustained thermals and battery remain device acceptance checks.
+
+## Resumable files — 2026-11-19
+
+- Added request-correlated resume tickets, byte progress, Retry and acknowledged cancellation. Partial state stays bound to a Mac and shared folder. Uploads snapshot their source. Downloads verify file identity and modification metadata before and after each read.
+- Tested a lost final upload acknowledgment, reconnecting mid-download, late replies, wrong tickets, replaced files, changed roots and cancellation after commit. A real HostFiles check resumes through two connection-scoped services. Legacy file integration still passes.
+- Resume lasts up to 30 minutes of inactivity within the existing app processes. There is no restart journal or background transfer entitlement. Four unfinished host transfers and the existing 512 MB per-file limit bound retained state. Expired host records are removed when the file service next receives a request.
+- Shared, tooling, Rust, Mac and companion regression results are retained in local build logs. Both paused-transfer UI checks passed, including Retry and Cancel, and screenshots were reviewed. Physical network interruptions still need device acceptance testing.

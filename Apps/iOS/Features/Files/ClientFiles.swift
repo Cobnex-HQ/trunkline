@@ -20,6 +20,8 @@ final class ClientFiles: ObservableObject {
     @Published var downloadedURL: URL?
     @Published var error: String?
     let clipboard = ClipboardTransfer()
+    let resumable = ResumableFileClient()
+    private var resumableObservation: AnyCancellable?
     private var clipboardMacID = ""
     private var clipboardPreferences = MacPreferencesStore()
     @Published var clipboardText = ""
@@ -38,10 +40,15 @@ final class ClientFiles: ObservableObject {
     private var requestedPath: String?
     init(operationTimeout: Duration = .seconds(30), cancellationTimeout: Duration = .seconds(10)) {
         self.operationTimeout = operationTimeout; self.cancellationTimeout = cancellationTimeout
+        resumable.send = { [weak self] id, request in self?.send?(.resumableFile(id: id, request: request)) }
+        resumableObservation = resumable.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+        resumable.onComplete = { [weak self] in guard let self else { return }; self.list(self.path) }
         clipboard.send = { [weak self] in self?.send?($0) }
     }
     func configureClipboard(macID: String, defaults: UserDefaults) {
         clipboard.reset()
+        if features.contains(.resumableTransfers) { resumable.connect(macID: macID) }
+        else { resumable.disconnect() }
         clipboardMacID = macID
         clipboardPreferences = MacPreferencesStore(defaults: defaults)
         clipboard.mode = clipboardPreferences.load(macID).clipboard
@@ -51,7 +58,7 @@ final class ClientFiles: ObservableObject {
         clipboardPreferences.update(clipboardMacID) { $0.clipboard = mode }
         clipboard.mode = mode
     }
-    var isBusy: Bool { transferName != nil || mutation != nil || cancellation != nil || isLoading || requiresReconnect }
+    var isBusy: Bool { resumable.isBusy || transferName != nil || mutation != nil || cancellation != nil || isLoading || requiresReconnect }
     var isCancelling: Bool { cancellation != nil }
     var canUploadHere: Bool { path.isEmpty || features.contains(.folderUpload) }
     func configure(fileFeatures: [String]?) {
@@ -75,6 +82,7 @@ final class ClientFiles: ObservableObject {
     }
     func download(_ file: RemoteFile) {
         guard !isBusy else { return }
+        if features.contains(.resumableTransfers), resumable.connected { resumable.download(path: file.path, name: file.name); return }
         transferName = file.name; progress = 0; error = nil; armDeadline(); send?(.download(path: file.path))
     }
     func upload(_ url: URL) {
@@ -82,6 +90,7 @@ final class ClientFiles: ObservableObject {
         guard canUploadHere else {
             error = "Update Trunkline on your Mac to upload into folders. You can still upload to the shared folder."; return
         }
+        if features.contains(.resumableTransfers), resumable.connected { resumable.upload(url, parent: path); return }
         transferName = url.lastPathComponent; progress = 0; error = nil; armDeadline()
         let parent = path
         performDiskWork({ try $0.openUpload(url) }, remoteStarted: false) { client, size in
@@ -92,6 +101,7 @@ final class ClientFiles: ObservableObject {
         }
     }
     @discardableResult func handle(_ message: WireMessage) -> Bool {
+        if case let .resumableFileReply(id, reply) = message { resumable.receive(id: id, reply: reply); return true }
         if case let .operationError(text, context?) = message {
             if context.domain == .clipboard { clipboard.fail(text); clipboardError = text; return true }
             guard context.domain == .files else { return false }
@@ -236,7 +246,9 @@ final class ClientFiles: ObservableObject {
             }
         }
     }
-    func reset() {
+    func reset(preserveResumable: Bool = false) {
+        resumable.disconnect()
+        if !preserveResumable { resumable.reset() }
         features = []
         clipboard.reset()
         clearTransfer(); entries = []; path = ""; isLoading = false; hasLoadedListing = false; clipboardText = ""

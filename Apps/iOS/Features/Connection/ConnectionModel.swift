@@ -588,7 +588,7 @@ final class ConnectionModel: ObservableObject {
         clearTerminalCloses()
         hasLoadedTerminals = false
         sessions = []; selectedTerminalID = nil; onTerminalData = nil; onDesktopError = nil
-        files.reset()
+        files.reset(preserveResumable: true)
         sessionPairingLink = ""; connectionStatus = ""
         phase = .setup; heartbeat?.invalidate(); heartbeat = nil
         handshakeTimeout?.cancel(); handshakeTimeout = nil

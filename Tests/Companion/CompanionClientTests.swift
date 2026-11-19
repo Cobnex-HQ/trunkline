@@ -11,6 +11,14 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testClipboardSetupDoesNotEnableResumableRequestsOnLegacyHosts() {
+        let client = ClientFiles()
+        client.configure(fileFeatures: ["mutations", "cancellation"])
+        client.configureClipboard(macID: "legacy-fixture", defaults: .standard)
+        XCTAssertFalse(client.resumable.connected)
+        client.reset()
+    }
+
     func testDesktopPreferencesPersistPerMacWithoutOverwritingClipboard() {
         let suite = "desktop-preferences-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!

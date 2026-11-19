@@ -37,6 +37,7 @@ final class HostModel: ObservableObject {
         try self.keepAwake.applyRemotely(mode)
     })
     private var controlsTask: Task<Void, Never>?
+    private let resumableFiles = ResumableFileService()
     private var snapshotTask: Task<Void, Never>?
     private let desktopPairing = DesktopPairingCoordinator()
     private var startup = AccessStartup()
@@ -199,7 +200,7 @@ final class HostModel: ObservableObject {
         let id = UUID()
         let channel = SecureChannel(connection: connection)
         channels[id] = channel
-        let files = HostFiles(root: sharedFolderPath.isEmpty ? nil : URL(fileURLWithPath: sharedFolderPath, isDirectory: true))
+        let files = HostFiles(root: sharedFolderPath.isEmpty ? nil : URL(fileURLWithPath: sharedFolderPath, isDirectory: true), resumable: resumableFiles)
         var authenticated = false
         var lastActivity = Date()
         let acceptedAt = Date()
