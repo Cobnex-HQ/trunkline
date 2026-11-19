@@ -768,6 +768,7 @@ final class CompanionClientTests: XCTestCase {
         let ready = expectation(description: "Busy host fixture")
         let server = try TerminalCreationServer(ready: ready, sessions: [])
         server.rejection = "This Mac is in use on another device."
+        server.rejectionCause = .hostBusy
         defer { server.stop() }
         await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let port = try XCTUnwrap(server.listener.port)
@@ -782,6 +783,7 @@ final class CompanionClientTests: XCTestCase {
         model.connect()
         try await terminalEventually { model.error != nil }
         XCTAssertEqual(model.error, server.rejection)
+        XCTAssertEqual(model.diagnostic.failure, .hostBusy)
         XCTAssertEqual(model.phase, .setup)
     }
 
@@ -1572,6 +1574,7 @@ private struct TerminalKeyboardFixture: View {
     private var sessions: [TerminalSessionInfo]
     var holdLists = false
     var rejection: String?
+    var rejectionCause: ConnectionFailureCause?
     private(set) var authentications = 0
     private(set) var authenticationPasscodes: [String] = []
     private(set) var creations = 0
@@ -1596,7 +1599,7 @@ private struct TerminalKeyboardFixture: View {
                     case let .authenticate(passcode):
                         self.authentications += 1
                         self.authenticationPasscodes.append(passcode)
-                        if let rejection = self.rejection { channel?.reject(rejection) }
+                        if let rejection = self.rejection { channel?.reject(rejection, cause: self.rejectionCause) }
                         else { channel?.send(.accepted(name: "Fixture Mac", display: .fallback)) }
                     case .ping: channel?.send(.pong)
                     case .listTerminals:

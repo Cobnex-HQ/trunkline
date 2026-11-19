@@ -103,3 +103,7 @@ Run `python3 Scripts/dev.py test` for the shared Swift, Rust and tooling suites.
 Trunkline uses [GNU GPL v3](LICENSE). Sunshine, Moonlight, SwiftTerm, MacOwl and other components retain their original copyrights and licences. See [third-party notices](docs/THIRD_PARTY.md). Trunkline branding does not remove upstream attribution.
 
 CI publishes no app binaries. Public releases must meet the source, licence, signing and platform requirements in [RELEASING.md](docs/RELEASING.md).
+
+### Connection details
+
+Open **Connection details** from a connection error or the Desktop options menu. It shows the last connection stage and typed failure reason. Connected Macs also report input, screen recording and window-control permissions. Older hosts may report these as not checked. A blocked route cannot prove that a Mac is offline. Share connection report exports these checks without addresses, credentials or pairing links.

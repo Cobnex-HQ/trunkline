@@ -179,6 +179,7 @@ struct DesktopView: View {
     init(model: ConnectionModel) { self.model = model; self.controls = model.controls }
     @Environment(\.scenePhase) private var scenePhase
     @State private var settings = false
+    @State private var diagnostics = false
     @State private var disconnect = false
     var body: some View {
         NavigationStack {
@@ -249,6 +250,7 @@ struct DesktopView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Stream settings", systemImage: "slider.horizontal.3") { settings = true }
+                        Button("Connection details", systemImage: "network") { diagnostics = true }
                         Button("Refresh", systemImage: "arrow.clockwise") { desktop.refresh() }
                         Button("Disconnect", systemImage: "power", role: .destructive) { disconnect = true }
                     } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Desktop options")
@@ -275,6 +277,9 @@ struct DesktopView: View {
             .onChange(of: model.desktopDisplay) { _, display in desktop.display = display }
             .confirmationDialog("Disconnect from your Mac?", isPresented: $disconnect, titleVisibility: .visible) {
                 Button("Disconnect", role: .destructive) { model.disconnect() }
+            }
+            .sheet(isPresented: $diagnostics) {
+                ConnectionDiagnosticsView(diagnostic: model.diagnostic, snapshot: controls.snapshot, refresh: { controls.refresh() })
             }
             .sheet(isPresented: $settings) {
                 NavigationStack {

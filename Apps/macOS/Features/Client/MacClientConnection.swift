@@ -10,6 +10,7 @@ final class MacClientConnection: ObservableObject {
     @Published private(set) var phase: Phase = .disconnected
     @Published private(set) var name = "Mac"
     @Published private(set) var display = DesktopDisplay.fallback
+    @Published var diagnostic = ConnectionDiagnostic()
     @Published private(set) var error: String?
     var onMessage: ((WireMessage) -> Void)?
     var onDisconnect: (() -> Void)?
@@ -21,9 +22,10 @@ final class MacClientConnection: ObservableObject {
     init(makeChannel: @escaping @MainActor (PairingDetails) -> SecureChannel = { SecureChannel(pairing: $0) }) {
         self.makeChannel = makeChannel
     }
-    func connect(pairing: PairingDetails, passcode: String) {
+    func connect(pairing: PairingDetails, passcode: String, route: ConnectionDiagnostic.Route = .local) {
         if phase != .disconnected { disconnect() }
         error = nil
+        diagnostic.begin(route: route); diagnostic.advance(.secureConnection)
         let id = UUID()
         generation = id
         phase = .connecting
@@ -32,6 +34,7 @@ final class MacClientConnection: ObservableObject {
         channel.onReady = { [weak self, weak channel] in
             guard let self, self.generation == id else { return }
             self.phase = .authenticating
+            self.diagnostic.advance(.authentication)
             channel?.send(.authenticate(passcode: passcode))
         }
         channel.onMessage = { [weak self] message in
@@ -43,16 +46,19 @@ final class MacClientConnection: ObservableObject {
                 self.name = name
                 self.display = display
                 self.phase = .connected
+                self.diagnostic.advance(.connected)
                 self.send(.requestControls())
                 self.onMessage?(message)
-            case let .failure(message): self.disconnect(reason: message)
+            case let .failure(message, cause):
+                self.disconnect(reason: message); self.diagnostic.fail(cause ?? .unknown)
             default:
                 guard self.phase == .connected else { return }
                 self.onMessage?(message)
             }
         }
-        channel.onClose = { [weak self] reason in
+        channel.onClose = { [weak self, weak channel] reason in
             guard let self, self.generation == id else { return }
+            self.diagnostic.fail(channel?.failureCause ?? .interrupted)
             self.disconnect(reason: reason)
         }
         lastResponse = Date()
@@ -61,6 +67,7 @@ final class MacClientConnection: ObservableObject {
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
                 guard let self, self.generation == id else { return }
                 if Date().timeIntervalSince(self.lastResponse) > 20 {
+                    self.diagnostic.fail(self.phase == .authenticating ? .authenticationTimeout : .interrupted)
                     self.disconnect(reason: "The Mac stopped responding. Check its network and reconnect.")
                     return
                 }

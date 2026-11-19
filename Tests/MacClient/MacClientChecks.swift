@@ -37,7 +37,7 @@ import Network
         for _ in 0..<200 where model.phase != .connected { try await Task.sleep(for: .milliseconds(20)) }
         precondition(authenticated && model.phase == .connected && model.name == "Fixture Mac")
         precondition(model.display.width == 3024 && model.display.height == 1964)
-        peer?.send(.failure("Already controlled by another device"))
+        peer?.send(.failure("Already controlled by another device", cause: .hostBusy))
         for _ in 0..<100 where model.phase != .disconnected { try await Task.sleep(for: .milliseconds(20)) }
         precondition(model.phase == .disconnected && model.error == "Already controlled by another device")
         model.connect(pairing: pairing, passcode: "fixture-passcode")

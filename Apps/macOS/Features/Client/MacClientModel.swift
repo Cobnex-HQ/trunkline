@@ -94,6 +94,7 @@ final class MacClientModel: ObservableObject {
             if preferenceID != local.fingerprint { loadPreferences(local.fingerprint) }
             pairing = local; pairingText = local.link
             error = nil
+            connection.diagnostic.begin(route: away ? .away : .local)
             let id = UUID(); generation = id
             if !away { connection.connect(pairing: local, passcode: passcode); return }
             guard let data = try SecretStore.readHostSecret(RemoteAccessTicket.storageKey(local.fingerprint)),
@@ -101,7 +102,7 @@ final class MacClientModel: ObservableObject {
                 error = "Enable Away access on the other Mac and paste its updated pairing link."; return
             }
             let remote = MacAwayConnection(); self.remote = remote
-            remote.onLost = { [weak self] message in self?.disconnect(); self?.error = message }
+            remote.onLost = { [weak self] message in self?.disconnect(); self?.error = message; self?.connection.diagnostic.fail(.interrupted) }
             preparing = true; status = "Establishing a direct connection…"
             task = Task {
                 do {
@@ -112,10 +113,11 @@ final class MacClientModel: ObservableObject {
                     try await remote.start(ticket)
                     guard self.generation == id, !Task.isCancelled else { return }
                     self.preparing = false
-                    self.connection.connect(pairing: try PairingDetails(host: "127.0.0.1", port: local.port, fingerprint: local.fingerprint), passcode: self.passcode)
+                    self.connection.connect(pairing: try PairingDetails(host: "127.0.0.1", port: local.port, fingerprint: local.fingerprint), passcode: self.passcode, route: .away)
                 } catch {
                     guard self.generation == id else { return }
                     self.disconnect(); self.error = error.localizedDescription
+                    self.connection.diagnostic.fail(.directRouteUnavailable)
                 }
             }
         } catch { self.error = error.localizedDescription }

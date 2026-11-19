@@ -10,6 +10,7 @@ public final class SecureChannel {
     public var onMessage: ((WireMessage) -> Void)?
     public var onReady: (() -> Void)?
     public var onClose: ((String) -> Void)?
+    public private(set) var failureCause: ConnectionFailureCause?
     private let connection: NWConnection
     private var parser = PacketParser()
     private var pendingBytes = 0
@@ -28,7 +29,7 @@ public final class SecureChannel {
         self.init(connection: NWConnection(host: NWEndpoint.Host(pairing.host), port: NWEndpoint.Port(rawValue: pairing.port)!, using: NWParameters(tls: tls, tcp: tcp)))
     }
     public func start() {
-        let timeout = DispatchWorkItem { [weak self] in self?.close("Connection timed out. Check the Mac address and network.") }
+        let timeout = DispatchWorkItem { [weak self] in self?.close("Connection timed out. Check the Mac address and network.", diagnostic: .unreachable) }
         self.timeout = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
         connection.stateUpdateHandler = { [weak self] state in
@@ -36,7 +37,7 @@ public final class SecureChannel {
             guard let self else { return }
             switch state {
             case .ready: self.timeout?.cancel(); self.onReady?(); self.onReady = nil; self.receive()
-            case let .failed(error): self.close(error.localizedDescription)
+            case let .failed(error): self.close(error.localizedDescription, diagnostic: .network(error))
             case .cancelled: self.close("Disconnected")
             default: break
             }
@@ -55,14 +56,14 @@ public final class SecureChannel {
                 MainActor.assumeIsolated {
                 guard let self else { return }
                 self.pendingBytes -= data.count
-                if let error { self.close(error.localizedDescription) }
+                if let error { self.close(error.localizedDescription, diagnostic: .network(error)) }
                 }
             })
         } catch { close(error.localizedDescription) }
     }
     /// Deliver an admission error before closing, so the peer receives the reason.
-    public func reject(_ reason: String) {
-        guard !closed, let data = try? PacketCodec.encode(.failure(reason)) else { close(reason); return }
+    public func reject(_ reason: String, cause: ConnectionFailureCause? = nil) {
+        guard !closed, let data = try? PacketCodec.encode(.failure(reason, cause: cause)) else { close(reason); return }
         onMessage = nil
         timeout?.cancel()
         let deadline = DispatchWorkItem { [weak self] in self?.close(reason) }
@@ -72,8 +73,9 @@ public final class SecureChannel {
             MainActor.assumeIsolated { self?.close(reason) }
         })
     }
-    public func close(_ reason: String = "Disconnected") {
+    public func close(_ reason: String = "Disconnected", diagnostic: ConnectionFailureCause? = nil) {
         guard !closed else { return }; closed = true
+        if let diagnostic { failureCause = diagnostic }
         timeout?.cancel(); timeout = nil
         connection.stateUpdateHandler = nil
         connection.cancel()
@@ -90,7 +92,7 @@ public final class SecureChannel {
                     guard CompanionTransportPolicy.allows(message) else { self.close("Desktop traffic requires the desktop connection."); return }
                     self.onMessage?(message)
                 } }
-                if let error { self.close(error.localizedDescription) }
+                if let error { self.close(error.localizedDescription, diagnostic: .network(error)) }
                 else if complete { self.close() }
                 else { self.receive() }
             } catch { self.close("Invalid network data.") }

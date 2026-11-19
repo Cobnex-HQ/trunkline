@@ -478,6 +478,19 @@ final class UIReviewScreenshots: XCTestCase {
         capture("desktop-disconnect-confirmation", ready: app.staticTexts["Disconnect from your Mac?"])
     }
 
+    func testConnectionDiagnostics() {
+        launch("desktop")
+        tap("Desktop options")
+        tapMenuItem("Connection details")
+        capture("connection-diagnostics", ready: app.navigationBars["Connection details"])
+        XCTAssertTrue(app.staticTexts["Mac app permissions"].firstMatch.exists)
+        let share = app.buttons["Share connection report"].firstMatch
+        if !share.isHittable { app.swipeUp() }
+        XCTAssertTrue(share.isHittable)
+        tap("Done")
+        XCTAssertTrue(app.navigationBars["Desktop"].waitForExistence(timeout: 8))
+    }
+
     func testDesktopViewerScreens() {
         launch("desktop-session")
         capture("desktop-viewer-placeholder", ready: app.buttons["Spaces and windows"])

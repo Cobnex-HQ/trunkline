@@ -36,6 +36,8 @@ struct ExperienceReview: View {
             model.connectionStatus = "Connecting to Studio Mac…"
         }
         model.name = "Studio Mac"
+        model.diagnostic.begin(route: .local)
+        model.diagnostic.advance(.connected)
         model.roundTripMS = 9
         model.files.send = nil
         model.files.configure(fileFeatures: ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_LEGACY_FILES"] == "1"

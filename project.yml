@@ -240,6 +240,7 @@ targets:
     - Apps/macOS
     - Engines/MacClient
     - Apps/iOS/Features/Controls/ClientControls.swift
+    - Apps/iOS/Features/Connection/ConnectionDiagnosticsView.swift
     - Vendor/MoonlightSource/Limelight/Crypto/mkcert.c
     - Vendor/MoonlightSource/Limelight/Stream/StreamConfiguration.m
     - Vendor/MoonlightSource/Limelight/Network/HttpRequest.m

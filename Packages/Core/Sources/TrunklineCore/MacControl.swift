@@ -140,6 +140,8 @@ public struct MacControlSnapshot: Codable, Equatable, Sendable {
     public var requestID: UUID?
     public var windowPage: MacWindowPage?
     /// Nil when the bundled desktop engine does not support monitor selection.
+    public var inputAccess: Bool?
+    public var screenCaptureAccess: Bool?
     public var desktopQuality: DesktopQualityState?
     public var desktopDisplays: DesktopDisplaySelection?
     public init(apps: [MacApplication], windows: [MacWindow], displays: [MacDisplayInfo], volume: Double?, muted: Bool?, accessibility: Bool, frontmostApp: String, installedApps: [MacInstalledApplication]? = nil, loadingApps: Bool? = nil, audioOutputs: [MacAudioOutput]? = nil, power: MacPowerCapability? = nil, windowScope: MacWindowScope? = nil, requestID: UUID? = nil, windowPage: MacWindowPage? = nil, desktopDisplays: DesktopDisplaySelection? = nil) {

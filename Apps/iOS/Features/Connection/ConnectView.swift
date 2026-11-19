@@ -12,6 +12,7 @@ struct ConnectView: View {
     @State private var passcodeFocused = false
     @State private var usePasscode = false
     @State private var settings = false
+    @State private var diagnostics = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -101,6 +102,7 @@ struct ConnectView: View {
                             Label { Text(error).textSelection(.enabled) } icon: {
                                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
                             }
+                            Button("Connection details") { diagnostics = true }
                             Button("Device settings") {
                                 UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
                             }
@@ -155,6 +157,9 @@ struct ConnectView: View {
                         scanner = true
                     }
                 }
+            }
+            .sheet(isPresented: $diagnostics) {
+                ConnectionDiagnosticsView(diagnostic: model.diagnostic, snapshot: model.controls.snapshot)
             }
             .sheet(isPresented: $scanner) {
                 PairingScanner { link in

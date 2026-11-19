@@ -215,16 +215,16 @@ final class HostModel: ObservableObject {
             lastActivity = Date()
             if !authenticated {
                 guard case let .authenticate(passcode) = message, self.limiter.isAllowed() else {
-                    channel.reject("Authentication failed. Try again in one minute."); return
+                    channel.reject("Authentication failed. Try again in one minute.", cause: .rateLimited); return
                 }
                 let authentication = self.authentication
                 switch self.admission.admit(id, verify: { authentication?.verify(passcode) == true }) {
                 case .busy:
-                    channel.reject("This Mac is in use on another device. Disconnect there before connecting here.")
+                    channel.reject("This Mac is in use on another device. Disconnect there before connecting here.", cause: .hostBusy)
                     return
                 case .invalidCredentials:
                     self.limiter.recordFailure(); self.persistLimiter()
-                    channel.reject("Incorrect connection passcode. After five attempts, wait one minute.")
+                    channel.reject("Incorrect connection passcode. After five attempts, wait one minute.", cause: .authenticationRejected)
                     return
                 case .accepted: break
                 }
@@ -259,6 +259,8 @@ final class HostModel: ObservableObject {
                     guard !Task.isCancelled, self.activeID == id else { return }
                     state.desktopDisplays = self.sunshine.displaySelection
                     state.desktopQuality = self.sunshine.qualityState
+                    state.inputAccess = CGPreflightPostEventAccess()
+                    state.screenCaptureAccess = CGPreflightScreenCaptureAccess()
                     channel?.send(.controls(state))
                 }
             case let .control(request):

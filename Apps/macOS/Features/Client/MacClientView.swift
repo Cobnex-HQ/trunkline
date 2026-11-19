@@ -8,12 +8,14 @@ struct MacClientView: View {
     @State private var showPasscode = false
     private var connected: Bool { model.connection.phase == .connected }
     private var busy: Bool { model.preparing || (model.connection.phase != .disconnected && !connected) }
+    @State private var diagnostics = false
     var body: some View {
         Form {
             if connected {
                 Section {
                     LabeledContent("Connected to", value: model.connection.name)
                     LabeledContent("Route", value: model.away ? "Direct · Away" : "Local network")
+                    Button("Connection details") { diagnostics = true }
                     HStack {
                         Button(model.streaming ? "Show desktop" : "Open desktop", systemImage: "display") { model.openDesktop() }
                             .buttonStyle(.borderedProminent)
@@ -79,8 +81,14 @@ struct MacClientView: View {
                 }
             }
             if let error = model.error ?? model.connection.error {
-                Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).textSelection(.enabled) }
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).textSelection(.enabled)
+                    Button("Connection details") { diagnostics = true }
+                }
             }
+        }
+        .sheet(isPresented: $diagnostics) {
+            ConnectionDiagnosticsView(diagnostic: model.connection.diagnostic, snapshot: model.controls.snapshot)
         }
         .formStyle(.grouped)
         .frame(maxWidth: connected ? 800 : 620).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

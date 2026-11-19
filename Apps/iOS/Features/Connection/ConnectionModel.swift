@@ -39,6 +39,7 @@ final class ConnectionModel: ObservableObject {
     @Published var passcode = ""
     @Published var rememberPasscode = false
     @Published var name = "Your Mac"
+    @Published var diagnostic = ConnectionDiagnostic()
     @Published var error: String?
     @Published var roundTripMS: Int?
     @Published var desktopDisplay = DesktopDisplay.fallback
@@ -252,6 +253,7 @@ final class ConnectionModel: ObservableObject {
     func connect() {
         guard phase == .setup, isForeground else { return }
         cancelLocalProbe(); offerAwayAccess = false
+        diagnostic.begin(route: useAwayAccess ? .away : .local)
         do {
             let pairing = try saveRemoteTicket(PairingDetails.parse(pairingText))
             pairingText = pairing.link
@@ -265,7 +267,7 @@ final class ConnectionModel: ObservableObject {
             phase = .connecting; error = nil; connectionStatus = "Establishing a direct connection…"
             setAwake(true)
             let remote = RemoteConnection(); self.remote = remote
-            remote.onLost = { [weak self] message in self?.disconnect(); self?.error = message }
+            remote.onLost = { [weak self] message in self?.disconnect(); self?.error = message; self?.diagnostic.fail(.interrupted) }
             let id = UUID(); connectionID = id
             preparing = Task { [weak self] in
                 do {
@@ -276,12 +278,15 @@ final class ConnectionModel: ObservableObject {
                 } catch {
                     guard let self, self.connectionID == id else { return }
                     self.disconnect(); self.error = error.localizedDescription
+                    let remoteError = error as NSError
+                    self.diagnostic.fail(remoteError.domain == "Remote" && remoteError.code == 2 ? .clientBusy : .directRouteUnavailable)
                 }
             }
         } catch { self.error = error.localizedDescription; phase = .setup }
     }
     private func beginChannel(_ pairing: PairingDetails) {
             guard !passcode.isEmpty else { error = "Enter the connection passcode you set on your Mac."; return }
+            diagnostic.advance(.secureConnection)
             sessionPairingLink = pairing.link
             connectionStatus = useAwayAccess ? "Direct connection established. Authenticating…" : "Connecting to your Mac…"
             let connectionLink = pairingText
@@ -294,6 +299,7 @@ final class ConnectionModel: ObservableObject {
             channel.onReady = { [weak self, weak channel] in
                 guard let self, self.connectionID == id else { return }
                 self.phase = .authenticating
+                self.diagnostic.advance(.authentication)
                 channel?.send(.authenticate(passcode: connectionPasscode))
             }
             let timeout = DispatchWorkItem { [weak self] in
@@ -301,7 +307,8 @@ final class ConnectionModel: ObservableObject {
                 let message = self.phase == .connecting
                     ? "Couldn’t reach your Mac. Turn on My Mac → Sharing on the Mac, allow Local Network access on this device, and check that both devices use the same Wi-Fi or private VPN."
                     : "The Mac didn’t confirm your passcode. Check the Mac’s connection status and try again."
-                self.disconnect(); self.error = message
+                let cause: ConnectionFailureCause = self.phase == .authenticating ? .authenticationTimeout : .unreachable
+                self.disconnect(); self.error = message; self.diagnostic.fail(cause)
             }
             handshakeTimeout = timeout
             DispatchQueue.main.asyncAfter(deadline: .now() + 18, execute: timeout)
@@ -342,6 +349,7 @@ final class ConnectionModel: ObservableObject {
                     #endif
                     self.files.configure(fileFeatures: fileFeatures)
                     self.name = name; self.desktopDisplay = display; self.phase = .connected
+                    self.diagnostic.advance(.connected)
                     defaults.set(connectionLink, forKey: "pairing-link")
                     if let paired = try? PairingDetails.parse(connectionLink) {
                         self.files.configureClipboard(macID: paired.fingerprint, defaults: self.defaults)
@@ -376,13 +384,15 @@ final class ConnectionModel: ObservableObject {
                         self.roundTripMS = Int(max(0, ProcessInfo.processInfo.systemUptime - sent) * 1000)
                         self.pingSent = nil
                     }
-                case let .failure(message): self.disconnect(); self.error = message
+                case let .failure(message, cause):
+                    self.disconnect(); self.error = message; self.diagnostic.fail(cause ?? .unknown)
                 default: break
                 }
             }
-            channel.onClose = { [weak self] reason in
+            channel.onClose = { [weak self, weak channel] reason in
                 connectionPasscode = ""
                 guard let self, self.connectionID == id else { return }
+                self.diagnostic.fail(channel?.failureCause ?? .interrupted)
                 self.channel = nil; self.remote?.stop(); self.remote = nil; self.resetSession(); self.error = reason
                 self.checkLocalRoute()
             }
@@ -565,6 +575,7 @@ final class ConnectionModel: ObservableObject {
             guard now - sent >= heartbeatTimeout else { return }
             disconnect()
             error = "Connection lost. Check your Mac and network, then reconnect."
+            diagnostic.fail(.interrupted)
             checkLocalRoute()
         } else {
             pingSent = now
