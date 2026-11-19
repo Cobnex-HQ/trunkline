@@ -148,3 +148,12 @@ These checks did not reboot the Mac, interrupt its network, reset credentials or
 - Passed 119 shared Swift tests, 88 companion tests on each simulator and five Mac tests. The optional live-stream test was skipped in this Mac run and passed separately for adaptive streaming.
 - Regression testing exposed an intermittent CLI cancellation failure. Keeping one interrupt listener across event-loop iterations fixed the listener gap. The full 14-test Rust suite passed with eight cancellation iterations, unchanged deadlines and backoff checks. Tooling tests also passed.
 - Physical display unplug/replug and two real Macs remain acceptance checks. These changes are committed source, not installed device updates.
+
+## Connection diagnostics and external display — 2026-11-19
+
+- Typed connection failures preserve legacy wire compatibility. Reports omit addresses, raw network errors, credentials and clipboard text. Permission checks identify the Mac app separately from its helper.
+- Passed 122 shared Swift, 36 tooling and 14 Rust tests. Diagnostics passed 88 companion tests per simulator and five Mac tests, with the separate live-stream test skipped in this run. Both diagnostic-screen UI tests passed and screenshots were reviewed.
+- External video uses an iPadOS 27 scene accessory, scoped to the selected desktop window. It retains the existing network stream, waits for a keyframe, bounds recovery requests and clears the external image on detach or inactivity.
+- Passed 90 companion tests per simulator, including source ownership, keyframe recovery and decoder backpressure. External-display controls passed on iPad and stayed absent on iPhone.
+- The simulator displayed actual test frames through the external scene at 720 × 480 and 1920 × 1080. The wider display preserved the 3:2 test image with side bars. The iPad retained its controls. Backgrounding cleared the external screen to black, and returning restored the test image. These are generated test frames, not a live hardware-decoded Mac stream.
+- The unsigned iOS Release build passed for the device SDK, including the Rust transport. It was not installed or submitted. Physical USB-C/AirPlay display, compressed-stream playback, disconnect/reconnect, hardware keyboard routing, sustained thermals and battery remain device acceptance checks.

@@ -107,3 +107,9 @@ CI publishes no app binaries. Public releases must meet the source, licence, sig
 ### Connection details
 
 Open **Connection details** from a connection error or the Desktop options menu. It shows the last connection stage and typed failure reason. Connected Macs also report input, screen recording and window-control permissions. Older hosts may report these as not checked. A blocked route cannot prove that a Mac is offline. Share connection report exports these checks without addresses, credentials or pairing links.
+
+### iPad external display
+
+On iPadOS 27 or later, connect a display and open **Desktop → Spaces and windows → Use external display**. The display shows the full Mac desktop at its original aspect ratio. The iPad keeps its preview, touch input, keyboard and controls. Output is off by default, stops when the app becomes inactive and is cleared when the desktop closes. It shares the existing connection but uses an additional video decoder while enabled.
+
+Device-sized virtual desktops are not enabled. See the [macOS feasibility check](docs/DISPLAY-FEASIBILITY.md).

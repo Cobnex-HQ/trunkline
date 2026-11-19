@@ -531,6 +531,23 @@ final class UIReviewScreenshots: XCTestCase {
         capture("desktop-primary-action", ready: app.buttons["Open desktop"])
     }
 
+    func testExternalDisplayControls() {
+        launch("desktop-session")
+        tap("Spaces and windows")
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            tap("Use external display")
+            XCTAssertTrue(app.buttons["Keyboard"].isHittable)
+            XCUIDevice.shared.orientation = .landscapeLeft
+            XCTAssertTrue(app.buttons["Spaces and windows"].waitForExistence(timeout: 5))
+            capture("external-display-controls")
+            tap("Spaces and windows")
+            tap("Use external display")
+            XCTAssertTrue(app.buttons["Close"].isHittable)
+        } else {
+            XCTAssertFalse(app.buttons["Use external display"].exists)
+        }
+    }
+
     func testTerminalScreens() {
         launch("terminal")
         capture("terminal-sessions", ready: app.navigationBars["Terminal"])

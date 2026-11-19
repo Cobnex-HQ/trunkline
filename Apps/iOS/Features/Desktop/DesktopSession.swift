@@ -336,6 +336,7 @@ private struct DesktopScreen: View {
     @SwiftUI.State private var text = ""
     @SwiftUI.State private var pendingMonitorID: String?
     @SwiftUI.State private var monitorSwitching = false
+    @SwiftUI.State private var externalDisplay = false
     var body: some View {
         VStack(spacing: 0) {
             desktopSurface
@@ -380,6 +381,18 @@ private struct DesktopScreen: View {
             }
         }
         .background(.black)
+        #if DEBUG && targetEnvironment(simulator)
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--ui-review"),
+               ProcessInfo.processInfo.environment["TRUNKLINE_REVIEW_EXTERNAL"] == "1" { externalDisplay = true }
+        }
+        #endif
+        .background {
+            if #available(iOS 27.0, *) {
+                ExternalDisplayPresentation(source: controller, enabled: externalDisplay && scenePhase == .active)
+                    .allowsHitTesting(false)
+            }
+        }
         .sheet(isPresented: $showControls) {
             ControlsView(controls: model.controls, files: model.files, dismissible: true)
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -423,9 +436,7 @@ private struct DesktopScreen: View {
     @ViewBuilder private var desktopSurface: some View {
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--ui-review") {
-            ContentUnavailableView("Desktop preview", systemImage: "desktopcomputer",
-                                   description: Text("Use the toolbar to explore desktop controls."))
-                .preferredColorScheme(.dark)
+            ExternalDisplayReviewSurface(controller: $controller)
         } else {
             DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
         }
@@ -477,6 +488,9 @@ private struct DesktopScreen: View {
             }
             Divider()
             Button("Gestures & displays", systemImage: "hand.draw") { showGestures = true }
+            if #available(iOS 27.0, *), UIDevice.current.userInterfaceIdiom == .pad {
+                Toggle("Use external display", systemImage: "display.2", isOn: $externalDisplay)
+            }
         } label: { Image(systemName: "rectangle.stack").frame(width: 44, height: 44) }
             .accessibilityLabel("Spaces and windows")
     }
@@ -500,6 +514,11 @@ private struct DesktopScreen: View {
                     Label("Use Displays in the toolbar to switch between connected Mac monitors. Each display keeps its own proportions.", systemImage: "display.2")
                     Text("Spaces are virtual desktops on a monitor. Create or rearrange them in Mission Control.")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+                if #available(iOS 27.0, *), UIDevice.current.userInterfaceIdiom == .pad {
+                    TrunklineSection("iPad external display") {
+                        Text("Connect a display, then turn on Use external display in Spaces and windows. The full Mac desktop appears there while your iPad keeps its preview and controls. Close the desktop or turn the option off to stop output.")
+                    }
                 }
             }.nativeWorkspaceStyle().font(.body)
                 .navigationTitle("Desktop gestures")

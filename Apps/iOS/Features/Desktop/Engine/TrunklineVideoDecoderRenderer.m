@@ -12,6 +12,7 @@
 #import "VideoDecoderRenderer.h"
 #import "Moonlight-Swift.h"
 #import "StreamView.h"
+#import "TrunklineExternalVideo.h"
 
 #include <libavcodec/avcodec.h>
 #include <libavcodec/cbs.h>
@@ -592,6 +593,9 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
 
     // Enqueue the next frame
     [self->displayLayer enqueueSampleBuffer:sampleBuffer];
+    if ([[TrunklineExternalVideo shared] submit:sampleBuffer fromView:_view isKeyframe:du->frameType == FRAME_TYPE_IDR]) {
+        LiRequestIdrFrame();
+    }
     
     if (du->frameType == FRAME_TYPE_IDR) {
         // Ensure the layer is visible now
