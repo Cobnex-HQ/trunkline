@@ -2,6 +2,14 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Bounded away connection setup — 2026-11-19
+
+- Reproduced the old long setup wait using the real transport executable and an offline loopback endpoint. Clients now stop after 45 seconds with at most five setup attempts and exponential delays of 2, 4, 8 and 16 seconds. The Mac host continues listening with capped backoff.
+- Verified cancellation during backoff, bounded failure, continued host availability and direct-only traffic. Late iOS worker events no longer replace the first failure.
+- Passed 36 tooling, 104 shared Swift and 14 Rust tests. All 81 companion tests passed on both iPhone and iPad simulators. The native iOS release library built and the Mac away client typechecked.
+- Signed updates were installed on both physical devices. The iPhone app launched. The iPad was locked, so its launch remains pending. The Mac update was installed and reopened with the same signing requirement and installation path. Its listening socket and system-awake assertion were verified. No terminal jobs were running before restart.
+- Loopback and simulator results do not establish cellular reachability. Physical-device checks on unreachable hosts and restrictive networks remain pending.
+
 ## Companion connection restoration — 2026-11-19
 
 - Reproduced background-return and relaunch failures with local connection fixtures. Backgrounding now releases the connection without discarding the in-memory resume credential. Returning restores the workspace and selected running terminal without creating another shell.

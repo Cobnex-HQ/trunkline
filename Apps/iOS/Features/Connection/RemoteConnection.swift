@@ -57,7 +57,11 @@ final class RemoteConnection {
         }
     }
     private func fail(_ message: String) {
+        guard !stopped else { return }
         let callback = ready; ready = nil
+        // Retire the worker before notifying the model. Native failure and
+        // worker exit can arrive together, and only the first is actionable.
+        stop()
         if let callback { callback.resume(throwing: NSError(domain: "Remote", code: 1, userInfo: [NSLocalizedDescriptionKey: message])) }
         else { onLost?(message) }
     }

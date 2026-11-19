@@ -33,7 +33,9 @@ final class MacAwayConnection {
         worker.terminationHandler = { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.stopped else { return }
-                self.fail("The direct connection ended. Check the remote Mac and retry.")
+                self.fail(self.ready != nil
+                    ? "Couldn’t reach your Mac. Check that it is awake, online and sharing. These networks may block a direct connection. Try connecting again."
+                    : "The direct connection ended. Check the remote Mac and retry.")
             }
         }
         process = worker

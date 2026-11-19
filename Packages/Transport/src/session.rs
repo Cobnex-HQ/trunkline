@@ -34,17 +34,27 @@ pub(crate) async fn run(config: DeviceConfig, helper: Multiaddr, host: bool) -> 
     let mut relayed = HashSet::new();
     let mut reserved = false;
     let mut helper_connected = false;
-    let mut last_attempt = tokio::time::Instant::now() - Duration::from_secs(60);
     let started = tokio::time::Instant::now();
+    let mut next_attempt = started;
+    let mut attempts: u32 = 0;
     let mut tick = tokio::time::interval(Duration::from_millis(200));
     emit("session_starting", json!({"host":host,"direct_only":true}));
     loop {
         tokio::select! {
             _=tick.tick()=>{
                 if crate::native::cancelled(){break;}
-                if !host && direct.is_empty() && started.elapsed()>Duration::from_secs(90) {bail!("No direct path could be established. Keep the Mac online and retry.");}
-                if last_attempt.elapsed()>Duration::from_secs(15) {
-                    last_attempt=tokio::time::Instant::now();
+                if !host && direct.is_empty() && started.elapsed()>=Duration::from_secs(45) {
+                    bail!("Couldn’t reach your Mac. Check that it is awake, online and sharing. These networks may block a direct connection. Tap Connect to retry.");
+                }
+                let needs_setup = direct.is_empty() && (!helper_connected || (host && !reserved) || (!host && relayed.is_empty()));
+                if needs_setup && (host || attempts < 5) && tokio::time::Instant::now() >= next_attempt {
+                    attempts = attempts.saturating_add(1);
+                    // A client gets five setup attempts, spaced by 2, 4, 8
+                    // and 16 seconds, within one non-renewable deadline.
+                    // The host remains available and caps its delay at 30s.
+                    let delay = Duration::from_secs(2_u64.pow(attempts.min(5)).min(if host { 30 } else { 16 }));
+                    next_attempt=tokio::time::Instant::now()+delay;
+                    if !host { emit("setup_attempt", json!({"attempt":attempts,"maximum_attempts":5,"next_delay_seconds":if attempts < 5 {Some(delay.as_secs())} else {None}})); }
                     if !helper_connected {let _=swarm.dial(helper.clone());}
                     else if host && !reserved {let _=swarm.listen_on(helper.clone().with(Protocol::P2pCircuit));}
                     else if !host && direct.is_empty() && relayed.is_empty() {let _=swarm.dial(helper.clone().with(Protocol::P2pCircuit).with(Protocol::P2p(expected)));}
@@ -58,10 +68,14 @@ pub(crate) async fn run(config: DeviceConfig, helper: Multiaddr, host: bool) -> 
             event=swarm.select_next_some()=>match event {
                 SwarmEvent::Behaviour(ClientEvent::Identify(identify::Event::Received{peer_id,info,..})) if peer_id==helper_peer=>{
                     crate::record_helper_observation(&mut swarm,info.observed_addr);
-                    if host && !reserved {let _=swarm.listen_on(helper.clone().with(Protocol::P2pCircuit));}
-                    else if !host && direct.is_empty() && relayed.is_empty() {let _=swarm.dial(helper.clone().with(Protocol::P2pCircuit).with(Protocol::P2p(expected)));}
+                    // Identify may repeat. Only the scheduled path above may
+                    // retry, otherwise these events bypass the attempt budget.
                 },
-                SwarmEvent::Behaviour(ClientEvent::Relay(relay::client::Event::ReservationReqAccepted{..}))=>{reserved=true;emit("remote_waiting",json!({"helper":helper.to_string()}));},
+                SwarmEvent::Behaviour(ClientEvent::Relay(relay::client::Event::ReservationReqAccepted{..}))=>{
+                    reserved=true;
+                    if host { attempts=0;next_attempt=tokio::time::Instant::now(); }
+                    emit("remote_waiting",json!({"helper":helper.to_string()}));
+                },
                 SwarmEvent::ListenerClosed{addresses,..}=>{if addresses.iter().any(|a|a.iter().any(|p|p==Protocol::P2pCircuit)){reserved=false;}},
                 SwarmEvent::ConnectionEstablished{peer_id,connection_id,endpoint,..}=>{
                     if peer_id==helper_peer {helper_connected=true;}
@@ -82,7 +96,14 @@ pub(crate) async fn run(config: DeviceConfig, helper: Multiaddr, host: bool) -> 
                         if !host {bail!("Direct connection lost. Reconnect to your Mac.");}
                     }
                 },
-                SwarmEvent::Behaviour(ClientEvent::Dcutr(e))=>emit("hole_punch",json!({"success":e.result.is_ok()})),
+                SwarmEvent::Behaviour(ClientEvent::Dcutr(e))=>{
+                    emit("hole_punch",json!({"success":e.result.is_ok()}));
+                    // A failed hole punch leaves a setup-only circuit behind.
+                    // Retire it so it cannot suppress the next bounded attempt.
+                    if !host && e.result.is_err() && direct.is_empty() {
+                        for id in relayed.drain(){swarm.close_connection(id);}
+                    }
+                },
                 SwarmEvent::OutgoingConnectionError{error,..}=>emit("setup_retry",json!({"reason":error.to_string()})),
                 _=>{},
             }

@@ -11,6 +11,25 @@ import SwiftTerm
 
 @MainActor
 final class CompanionClientTests: XCTestCase {
+    func testAwayFailureIsDeliveredOnceAndLateEventsAreIgnored() {
+        let remote = RemoteConnection()
+        var failures: [String] = []
+        remote.onLost = { failures.append($0) }
+        remote.receive(#"{"event":"native_error","details":{"error":"Mac unreachable"}}"#)
+        remote.receive(#"{"event":"native_error","details":{"error":"Late worker exit"}}"#)
+        remote.receive(#"{"event":"tunnel_lost"}"#)
+        XCTAssertEqual(failures, ["Mac unreachable"], "Worker completion must not replace the useful connection error or fail twice")
+    }
+
+    func testCancelledAwayConnectionIgnoresLateFailure() {
+        let remote = RemoteConnection()
+        var failures: [String] = []
+        remote.onLost = { failures.append($0) }
+        remote.stop()
+        remote.receive(#"{"event":"native_error","details":{"error":"Late worker exit"}}"#)
+        XCTAssertTrue(failures.isEmpty)
+    }
+
     func testBackgroundDuringSavedUnlockDiscardsTheResultAndDoesNotPromptTwice() async throws {
         let suite = "resume-unlock-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

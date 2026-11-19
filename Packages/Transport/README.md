@@ -9,4 +9,10 @@ cargo build --release --locked
 
 `src/session.rs` implements session transport, `tunnel.rs` handles forwarding, `pairing.rs` handles paired configuration, and `native.rs` exposes the C interface declared in `iOS/P2PProbe.h`. `src/main.rs` provides the helper CLI. Use `--help` to inspect commands. Never publish generated identities or pairing files.
 
+Away clients allow 45 seconds to establish a direct route. Setup uses at most five attempts with exponential delays of 2, 4, 8 and 16 seconds. Helper identification events cannot reset this budget. A failed hole punch closes its setup circuit before a later attempt. Exhaustion returns an error and requires the user to connect again. Cancellation stops the worker without waiting for the deadline. The subsequent authentication exchange has its own timeout.
+
+The listening Mac host remains available until sharing is stopped. Its setup retries back off to a maximum delay of 30 seconds. An established direct session does not expire at the client setup deadline and does not fall back to relayed application traffic.
+
+`tests/session_retry.rs` runs the real helper executable against an offline loopback endpoint. It checks exponential delays, bounded failure, cancellation and continued host availability without public services or saved credentials.
+
 `two_process_test.py --helper ADDRESS` is an optional manual networking experiment. It writes private local results to the ignored `Private/` directory and requires an authorised reachable helper. Passing it does not demonstrate cellular connectivity. Away access remains dependent on network reachability and rendezvous service availability.
