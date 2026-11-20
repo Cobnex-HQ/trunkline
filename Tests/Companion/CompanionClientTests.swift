@@ -748,6 +748,61 @@ final class CompanionClientTests: XCTestCase {
     // This bounds fixture startup; heartbeat and protocol deadlines below stay short.
     private let fixtureStartupTimeout: TimeInterval = 10
 
+    func testSavedMacRefreshWaitsForDefaultsWritesAndUpdatesOtherWindows() async throws {
+        let suite = "saved-mac-notifications-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = ConnectionModel(defaults: defaults, automaticallyResume: false)
+        let second = ConnectionModel(defaults: defaults, automaticallyResume: false)
+        let observer = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: defaults)
+            .sink { _ in
+                MainActor.assumeIsolated {
+                    first.refreshSavedMacs()
+                    second.refreshSavedMacs()
+                }
+            }
+        defer { observer.cancel(); first.disconnect(); second.disconnect() }
+        let pairing = try PairingDetails(host: "studio.local", port: 47995, fingerprint: String(repeating: "a", count: 64))
+        first.receivePairingLink(try XCTUnwrap(URL(string: pairing.link)))
+        first.useAwayAccess = true
+        first.useAwayAccess = false
+        first.useAwayAccess = true
+        XCTAssertTrue(second.savedMacs.isEmpty, "Refresh must wait until the current save finishes")
+        try await terminalEventually { second.savedMacs.first?.away == true }
+        XCTAssertEqual(second.savedMacs.map(\.id), [pairing.fingerprint])
+        XCTAssertEqual(first.savedMacs, second.savedMacs)
+        XCTAssertNil(second.selectedMacID, "Refreshing choices must not switch another window's Mac")
+        first.forget()
+        try await terminalEventually { second.savedMacs.isEmpty }
+    }
+
+    func testAcceptedConnectionSavesMacWhileDefaultsObserverIsActive() async throws {
+        let ready = expectation(description: "Sign-in fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "sign-in-notifications-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, automaticallyResume: false,
+            deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
+                SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+            })
+        let observer = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: defaults)
+            .sink { _ in MainActor.assumeIsolated { model.refreshSavedMacs() } }
+        defer { observer.cancel(); model.disconnect() }
+        let pairing = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "b", count: 64))
+        model.pairingText = pairing.link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually { model.phase == .connected && model.savedMacs.count == 1 }
+        XCTAssertEqual(model.savedMacs.first?.id, pairing.fingerprint)
+        XCTAssertEqual(model.savedMacs.first?.name, model.name)
+        XCTAssertEqual(SavedMacStore(defaults: defaults).selectedID, pairing.fingerprint)
+        XCTAssertTrue(model.passcode.isEmpty)
+    }
+
     func testPairingSeveralMacsPreservesChoicesAndClearsUnsavedPasscode() throws {
         let suite = "trunkline-multi-mac-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

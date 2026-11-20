@@ -2,6 +2,13 @@
 
 Development results are recorded below by date. See [test instructions](TESTING.md) and [release requirements](RELEASING.md).
 
+## Connection sign-in crash — 2026-11-21
+
+- Two physical iPhone crash reports showed overlapping access to the saved-Mac store. A synchronous defaults notification refreshed the store during authentication or an Away-mode change while a save was still running.
+- Saved-Mac refreshes now wait for the current write to finish and combine repeated notifications. Other windows still receive updates without changing their selected Mac.
+- Both new regression tests reproduced the crash before the fix and passed afterward. All 104 companion tests passed on each iPhone and iPad simulator. The project checks passed 36 tooling, 137 shared Swift and 14 Rust tests.
+- The signed iOS build passed signature verification and was installed and launched on the physical iPhone. Physical sign-in acceptance remains pending. The iPad installation is pending because the device is offline.
+
 ## Clipboard controls and consent — 2026-11-19
 
 - Added explicit copy/transfer actions, acknowledged completion, bounded waits and per-Mac opt-in text sync. Backgrounding stops sync. Incoming text does not replace a newer local copy. Timed-out legacy replies are ignored until reconnect.

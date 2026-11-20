@@ -22,6 +22,7 @@ final class ConnectionModel: ObservableObject {
     }
     @Published private(set) var savedMacs: [SavedMac] = []
     private var macStore: SavedMacStore
+    private var savedMacRefreshPending = false
     var preferences: MacPreferencesStore { MacPreferencesStore(defaults: defaults) }
     var selectedMacID: String? { (try? PairingDetails.parse(pairingText))?.fingerprint }
     @Published var offerAwayAccess = false
@@ -534,8 +535,16 @@ final class ConnectionModel: ObservableObject {
     }
     func chooseAwayAccess() { useAwayAccess = true; error = nil }
     func refreshSavedMacs() {
-        macStore.refresh()
-        if savedMacs != macStore.macs { savedMacs = macStore.macs }
+        // UserDefaults can notify synchronously inside SavedMacStore.save().
+        // Wait for its exclusive mutation and all related writes to finish.
+        guard !savedMacRefreshPending else { return }
+        savedMacRefreshPending = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.savedMacRefreshPending = false
+            self.macStore.refresh()
+            if self.savedMacs != self.macStore.macs { self.savedMacs = self.macStore.macs }
+        }
     }
     func setWindowFocused(_ focused: Bool) {
         windowFocused = focused
