@@ -87,10 +87,8 @@ struct TerminalSurface: UIViewRepresentable {
             if reset { terminal.getTerminal().resetToInitialState() }
             terminal.feed(byteArray: Array(bytes)[...])
         }
-        DispatchQueue.main.async {
-            model.send(.attachTerminal(id: sessionID))
-            let term = terminal.getTerminal()
-            model.send(.resizeTerminal(id: sessionID, columns: term.cols, rows: term.rows))
+        DispatchQueue.main.async { [weak terminal, weak coordinator = context.coordinator] in
+            if let terminal { coordinator?.attach(to: terminal) }
         }
         return terminal
     }
@@ -103,7 +101,7 @@ struct TerminalSurface: UIViewRepresentable {
         context.coordinator.requestKeyboard(showKeyboard && acceptsInput, terminal: terminal)
     }
     static func dismantleUIView(_ terminal: SessionTerminalView, coordinator: Coordinator) {
-        coordinator.active = false
+        coordinator.detach()
         terminal.updateUiClosed()
         terminal.onFocusChange = nil
         terminal.terminalDelegate = nil
@@ -113,9 +111,15 @@ struct TerminalSurface: UIViewRepresentable {
         weak var model: ConnectionModel?
         let id: UUID
         var keyboard: Binding<Bool>
-        var active = true
+        private var active = true
         let input: TerminalShortcutInput?
         private var lastKeyboardRequest: Bool?
+        private struct GridSize: Equatable {
+            let columns: Int
+            let rows: Int
+        }
+        private var lastSentGrid: GridSize?
+        private var resizeTask: Task<Void, Never>?
         init(model: ConnectionModel, id: UUID, keyboard: Binding<Bool>, input: TerminalShortcutInput? = nil) {
             self.model = model; self.id = id; self.keyboard = keyboard; self.input = input
         }
@@ -137,7 +141,39 @@ struct TerminalSurface: UIViewRepresentable {
                 if self.keyboard.wrappedValue != focused { self.keyboard.wrappedValue = focused }
             }
         }
-        func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) { model?.send(.resizeTerminal(id: id, columns: newCols, rows: newRows)) }
+        func attach(to terminal: SessionTerminalView) {
+            guard active else { return }
+            resizeTask?.cancel()
+            resizeTask = nil
+            model?.send(.attachTerminal(id: id))
+            let grid = terminal.getTerminal()
+            sendResize(GridSize(columns: grid.cols, rows: grid.rows))
+        }
+        func detach() {
+            active = false
+            resizeTask?.cancel()
+            resizeTask = nil
+        }
+        func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+            guard active, newCols > 0, newRows > 0 else { return }
+            resizeTask?.cancel()
+            resizeTask = nil
+            let size = GridSize(columns: newCols, rows: newRows)
+            guard size != lastSentGrid else { return }
+            // Keyboard and window animations can cross several row counts.
+            // Send the settled grid so the shell redraws once.
+            resizeTask = Task { [weak self] in
+                do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+                guard let self, self.active else { return }
+                self.resizeTask = nil
+                self.sendResize(size)
+            }
+        }
+        private func sendResize(_ size: GridSize) {
+            guard size != lastSentGrid, size.columns > 0, size.rows > 0 else { return }
+            lastSentGrid = size
+            model?.send(.resizeTerminal(id: id, columns: size.columns, rows: size.rows))
+        }
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
             guard active, (source as? SessionTerminalView)?.acceptsInput != false else { return }
             for offset in stride(from: data.startIndex, to: data.endIndex, by: 16384) {
@@ -198,16 +234,16 @@ class SessionTerminalView: TerminalView {
 }
 
 /// A single native, self-sizing key row. Keys scroll rather than shrinking below
-/// touch size; More and Dismiss remain reachable at every window width.
+/// touch size; More remains reachable at every window width.
 final class TerminalInputAccessory: UIInputView {
     private weak var terminal: TerminalView?
     private let scroll = UIScrollView()
     private var keys: [UIButton] = []
     private var control: UIButton!
     private var more: UIButton!
-    private var dismiss: UIButton!
     private var repeatTimer: Timer?
     private var keyHeight: CGFloat = 44
+    private var minimumWidth: CGFloat = 44
 
     init(terminal: TerminalView) {
         self.terminal = terminal
@@ -253,10 +289,7 @@ final class TerminalInputAccessory: UIInputView {
         more.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
             completion(self?.extraKeys() ?? [])
         }])
-        dismiss = makeButton(nil, symbol: "keyboard.chevron.compact.down", label: "Hide keyboard") { [weak self] in
-            _ = self?.terminal?.resignFirstResponder()
-        }
-        addSubview(more); addSubview(dismiss)
+        addSubview(more)
         NotificationCenter.default.addObserver(self, selector: #selector(syncControl), name: .terminalViewControlModifierReset, object: terminal)
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: TerminalInputAccessory, _: UITraitCollection) in
             self.updateTypography()
@@ -274,12 +307,8 @@ final class TerminalInputAccessory: UIInputView {
         super.layoutSubviews()
         let left = max(8, safeAreaInsets.left), right = max(8, safeAreaInsets.right)
         let fixedWidth = keyHeight + 8
-        dismiss.frame = CGRect(x: bounds.width - right - fixedWidth, y: 4, width: fixedWidth, height: keyHeight)
-        more.frame = CGRect(x: dismiss.frame.minX - 8 - fixedWidth, y: 4, width: fixedWidth, height: keyHeight)
+        more.frame = CGRect(x: bounds.width - right - fixedWidth, y: 4, width: fixedWidth, height: keyHeight)
         let available = max(0, more.frame.minX - 8 - left)
-        let minimumWidth = keys.reduce(CGFloat(44)) { width, button in
-            max(width, ceil(button.sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: keyHeight)).width))
-        }
         let rowWidth = min(available, CGFloat(keys.count) * (minimumWidth + 8) - 8)
         let visibleKeys = max(1, min(keys.count, Int((rowWidth + 8) / (minimumWidth + 8))))
         let width = max(minimumWidth, (rowWidth - CGFloat(visibleKeys - 1) * 8) / CGFloat(visibleKeys))
@@ -292,7 +321,8 @@ final class TerminalInputAccessory: UIInputView {
             x += width + 8
         }
         scroll.contentSize = CGSize(width: max(0, x - 8), height: scroll.bounds.height)
-        scroll.contentOffset.x = min(max(0, scroll.contentOffset.x), max(0, scroll.contentSize.width - scroll.bounds.width))
+        let offset = min(max(0, scroll.contentOffset.x), max(0, scroll.contentSize.width - scroll.bounds.width))
+        if scroll.contentOffset.x != offset { scroll.contentOffset.x = offset }
     }
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -309,11 +339,14 @@ final class TerminalInputAccessory: UIInputView {
     private func updateTypography() {
         let font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(for: .systemFont(ofSize: 15, weight: .medium), compatibleWith: traitCollection)
         keyHeight = max(44, ceil(font.lineHeight + 16))
-        for button in keys + [more, dismiss].compactMap({ $0 }) {
+        for button in keys + [more].compactMap({ $0 }) {
             button.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var attributes = attributes; attributes.font = font; return attributes
             }
             button.configuration?.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(font: font)
+        }
+        minimumWidth = keys.reduce(CGFloat(44)) { width, button in
+            max(width, ceil(button.sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: keyHeight)).width))
         }
         invalidateIntrinsicContentSize(); setNeedsLayout()
     }

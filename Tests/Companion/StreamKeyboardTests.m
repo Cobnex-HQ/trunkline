@@ -579,7 +579,7 @@
         [view toggleSoftwareKeyboard]; XCTAssertTrue(field.isFirstResponder);
         UIToolbar *toolbar = (UIToolbar *)field.inputAccessoryView;
         XCTAssertTrue([toolbar isKindOfClass:UIToolbar.class]);
-        XCTAssertEqualObjects(toolbar.items.lastObject.accessibilityLabel, @"Hide keyboard");
+        XCTAssertFalse([[toolbar.items valueForKey:@"accessibilityLabel"] containsObject:@"Hide keyboard"]);
         UIBarButtonItem *modifiers = toolbar.items[2];
         UIButton *command = [UIButton new];
         [command addAction:(UIAction *)modifiers.menu.children[0] forControlEvents:UIControlEventTouchUpInside];
@@ -600,6 +600,7 @@
         XCTAssertEqualObjects(released, ([NSSet setWithArray:@[@0x5B, @0xA0]]));
         XCTAssertEqualObjects(view.events[4][1], @4); XCTAssertEqualObjects(view.events[5][1], @4);
         [view toggleSoftwareKeyboard]; XCTAssertTrue(field.isFirstResponder);
+        XCTAssertEqual(field.inputAccessoryView, toolbar, @"Reuse the native key row when reopening");
         XCTAssertEqualObjects(field.text, @"0");
         [view toggleSoftwareKeyboard]; XCTAssertEqual(view.events.count, 6u, @"Reopening must not duplicate handlers or retain modifiers");
     } @finally { window.hidden = YES; window.rootViewController = nil; [previous makeKeyWindow]; }

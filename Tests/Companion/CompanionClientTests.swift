@@ -1214,6 +1214,7 @@ final class CompanionClientTests: XCTestCase {
                 accessory.setNeedsLayout(); accessory.layoutIfNeeded()
                 let keys = buttons(in: accessory)
                 XCTAssertGreaterThan(keys.count, 8)
+                XCTAssertFalse(keys.contains { $0.accessibilityLabel == "Hide keyboard" })
                 if category == .large { normalHeight = keys.first?.bounds.height ?? 0 }
                 else { XCTAssertGreaterThan(keys.first?.bounds.height ?? 0, normalHeight, "Large text must grow the keys, not clip or shrink labels") }
                 for key in keys {
@@ -1469,6 +1470,44 @@ final class CompanionClientTests: XCTestCase {
         controller.update(sessions: [session], pending: [], loaded: true)
         XCTAssertNil(controller.tableView.backgroundView,
                      "Receiving a session must still replace the empty state")
+    }
+
+    func testIdenticalTerminalSnapshotsDoNotPublishAgain() {
+        let model = ConnectionModel()
+        let sessions = [TerminalSessionInfo(id: UUID(), title: "Shell", kind: .shell, isRunning: true)]
+        model.receiveTerminalSessions(sessions)
+        var updates = 0
+        let observation = model.objectWillChange.sink { updates += 1 }
+        defer { observation.cancel() }
+        model.receiveTerminalSessions(sessions)
+        XCTAssertEqual(updates, 0)
+    }
+
+    func testTerminalSendsOnlyTheSettledGridDuringKeyboardResize() async throws {
+        let ready = expectation(description: "Resize fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "terminal-resize-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "c", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually { model.phase == .connected }
+        let terminal = SessionTerminalView(frame: .zero, font: nil)
+        let coordinator = TerminalSurface.Coordinator(model: model, id: UUID(), keyboard: .constant(true))
+        for rows in [28, 26, 24, 22, 20] {
+            coordinator.sizeChanged(source: terminal, newCols: 40, newRows: rows)
+            try await Task.sleep(for: .milliseconds(8))
+        }
+        try await terminalEventually { server.resizeRows.last == 20 }
+        XCTAssertEqual(server.resizeRows, [20])
     }
 
     func testDesktopTimeoutReleasesBusyStateAndRejectsLateDiscovery() async throws {
@@ -1910,6 +1949,7 @@ private struct TerminalKeyboardFixture: View {
     private(set) var authenticationPasscodes: [String] = []
     private(set) var creations = 0
     private(set) var closures = 0
+    private(set) var resizeRows: [Int] = []
     init(ready: XCTestExpectation, stopped: XCTestExpectation? = nil,
          disconnected: XCTestExpectation? = nil, sessions: [TerminalSessionInfo]) throws {
         self.sessions = sessions
@@ -1945,6 +1985,8 @@ private struct TerminalKeyboardFixture: View {
                         channel?.send(.terminals(self.sessions))
                     case .closeTerminal:
                         self.closures += 1
+                    case let .resizeTerminal(_, _, rows):
+                        self.resizeRows.append(rows)
                     default: break
                     }
                 }

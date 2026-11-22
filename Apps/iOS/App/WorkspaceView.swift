@@ -8,7 +8,8 @@ struct ConnectedTabs: View {
     @State private var selection: WorkspaceSection
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var columns: NavigationSplitViewVisibility = .automatic
-    @State private var workspaceWidth: CGFloat = 0
+    @State private var sidebarFits = false
+    private var editingTerminal: Bool { selection == .terminal && model.selectedTerminalID != nil }
     init(model: ConnectionModel, initialSelection: WorkspaceSection? = nil) {
         self.model = model
         _selection = State(initialValue: initialSelection ?? model.workspaceSection)
@@ -45,20 +46,20 @@ struct ConnectedTabs: View {
                 }
             }
             .navigationSplitViewStyle(.balanced)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-                workspaceWidth = width
+            .onGeometryChange(for: Bool.self) { $0.size.width >= 900 } action: { fits in
+                sidebarFits = fits
                 fitColumns()
             }
-            .onChange(of: selection) { _, section in model.workspaceSection = section; fitColumns() }
-            .onChange(of: model.selectedTerminalID) { _, _ in fitColumns() }
+            .onChange(of: selection) { _, section in model.workspaceSection = section }
+            .onChange(of: editingTerminal) { _, _ in fitColumns() }
         } else { workspaceTabs }
     }
 
     // Keep one navigation hierarchy during rotation. Only column visibility changes,
     // so terminal selection, keyboard focus and drafts remain attached to their views.
     private func fitColumns() {
-        let editingTerminal = selection == .terminal && model.selectedTerminalID != nil
-        columns = workspaceWidth >= 900 && !editingTerminal ? .all : .detailOnly
+        let preferred: NavigationSplitViewVisibility = sidebarFits && !editingTerminal ? .all : .detailOnly
+        if columns != preferred { columns = preferred }
     }
 
     private var connectionStatus: some View {

@@ -443,24 +443,24 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         return;
     }
     keyInputField.text = @"0";
-    UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 44)];
-    toolbar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    modifierMenuItem = [[UIBarButtonItem alloc] initWithTitle:@"Modifiers" menu:[self keyboardModifierMenu]];
-    modifierMenuItem.accessibilityLabel = @"Keyboard modifiers";
+    if (!keyInputField.inputAccessoryView) {
+        UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.bounds.size.width, 44)];
+        toolbar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        modifierMenuItem = [[UIBarButtonItem alloc] initWithTitle:@"Modifiers" menu:nil];
+        modifierMenuItem.accessibilityLabel = @"Keyboard modifiers";
+        UIBarButtonItem *space = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+        toolbar.items = @[[self keyboardButton:@"Escape" symbol:@"escape" code:0x1B],
+                          [self keyboardButton:@"Tab" symbol:@"arrow.right.to.line" code:0x09],
+                          modifierMenuItem,
+                          [self keyboardButton:@"Forward delete" symbol:@"delete.forward" code:0x2E],
+                          space];
+        keyInputField.inputAccessoryView = toolbar;
+    }
     [self updateKeyboardModifierMenu];
-    UIBarButtonItem *space = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
-    toolbar.items = @[[self keyboardButton:@"Escape" symbol:@"escape" code:0x1B],
-                      [self keyboardButton:@"Tab" symbol:@"arrow.right.to.line" code:0x09],
-                      modifierMenuItem,
-                      [self keyboardButton:@"Forward delete" symbol:@"delete.forward" code:0x2E],
-                      space,
-                      [self keyboardButton:@"Hide keyboard" symbol:@"keyboard.chevron.compact.down" code:0]];
-    keyInputField.inputAccessoryView = toolbar;
     [keyInputField becomeFirstResponder];
     if (keyInputField.undoManager.isUndoRegistrationEnabled) [keyInputField.undoManager disableUndoRegistration];
 }
 - (void)keyboardButtonPressed:(UIBarButtonItem *)sender {
-    if (sender.tag == 0) { [self toggleSoftwareKeyboard]; return; }
     unsigned char modifiers = [self keyboardModifiers];
     [self emitKeyboardKey:(unsigned short)sender.tag action:KEY_ACTION_DOWN modifiers:modifiers flags:0];
     [self emitKeyboardKey:(unsigned short)sender.tag action:KEY_ACTION_UP modifiers:modifiers flags:0];

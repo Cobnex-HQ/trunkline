@@ -140,13 +140,13 @@ final class ConnectionModel: ObservableObject {
     }
     func receiveTerminalSessions(_ sessions: [TerminalSessionInfo]) {
         let selectedWasRunning = self.sessions.first { $0.id == selectedTerminalID }?.isRunning == true
-        self.sessions = sessions
+        if self.sessions != sessions { self.sessions = sessions }
         if let id = pendingTerminalRestore {
             selectedTerminalID = sessions.first(where: { $0.id == id && $0.isRunning })?.id
             pendingTerminalRestore = nil
         }
         for id in closingTerminalIDs where !sessions.contains(where: { $0.id == id }) { finishTerminalClose(id) }
-        hasLoadedTerminals = true
+        if !hasLoadedTerminals { hasLoadedTerminals = true }
         if let previousIDs = terminalIDsBeforeCreation,
            let created = sessions.first(where: { !previousIDs.contains($0.id) }) {
             selectedTerminalID = created.id
@@ -434,8 +434,10 @@ final class ConnectionModel: ObservableObject {
                     self.channel?.send(.listTerminals)
                 case .pong:
                     if self.phase == .connected, let sent = self.pingSent {
-                        self.roundTripMS = Int(max(0, ProcessInfo.processInfo.systemUptime - sent) * 1000)
-                        self.roundTripTime = ProcessInfo.processInfo.systemUptime
+                        let now = ProcessInfo.processInfo.systemUptime
+                        let elapsedMS = Int(max(0, now - sent) * 1000)
+                        if self.roundTripMS != elapsedMS { self.roundTripMS = elapsedMS }
+                        self.roundTripTime = now
                         self.pingSent = nil
                         self.retryCount = 0
                     }

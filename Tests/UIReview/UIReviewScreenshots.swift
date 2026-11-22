@@ -142,7 +142,7 @@ final class UIReviewScreenshots: XCTestCase {
         tap("Show keyboard")
         for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait, .landscapeRight, .portrait] {
             XCUIDevice.shared.orientation = direction
-            XCTAssertTrue(app.buttons["terminal.key.Hide keyboard"].waitForExistence(timeout: 8))
+            XCTAssertTrue(app.keys["q"].firstMatch.waitForExistence(timeout: 8))
             let terminal = app.textViews["Mac terminal session"]
             let escape = app.buttons["terminal.key.Up arrow"]
             XCTAssertTrue(terminal.exists)
@@ -175,7 +175,7 @@ final class UIReviewScreenshots: XCTestCase {
             hierarchy.lifetime = .keepAlways
             add(hierarchy)
         }
-        app.buttons["terminal.key.Hide keyboard"].tap()
+        app.navigationBars.buttons["Hide keyboard"].firstMatch.tap()
         app.navigationBars.buttons["BackButton"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Project · build"].firstMatch.waitForExistence(timeout: 8))
         // Popping the detail must restore workspace navigation, not leave its
@@ -195,17 +195,16 @@ final class UIReviewScreenshots: XCTestCase {
         for direction: UIDeviceOrientation in [.portrait, .landscapeLeft, .portrait] {
             XCUIDevice.shared.orientation = direction
             terminal.tap()
-            let dismiss = app.buttons["terminal.key.Hide keyboard"]
-            XCTAssertTrue(dismiss.waitForExistence(timeout: 8), "Touching the terminal must open the keyboard")
             let escape = app.buttons["terminal.key.Up arrow"]
             let key = app.keys["q"].firstMatch
-            XCTAssertTrue(key.waitForExistence(timeout: 8))
+            XCTAssertTrue(key.waitForExistence(timeout: 8), "Touching the terminal must open the keyboard")
+            XCTAssertFalse(app.buttons["terminal.key.Hide keyboard"].exists)
             XCTAssertLessThanOrEqual(escape.frame.maxY, key.frame.minY)
             XCTAssertEqual(terminal.frame.maxY, escape.frame.minY, accuracy: 8)
             XCTAssertTrue(escape.isHittable)
             escape.tap()
             app.typeText("test")
-            dismiss.tap()
+            app.navigationBars.buttons["Hide keyboard"].firstMatch.tap()
             XCTAssertTrue(app.buttons["Show keyboard"].waitForExistence(timeout: 5))
             XCTAssertTrue(app.buttons["Up arrow"].firstMatch.isHittable)
             XCTAssertGreaterThan(terminal.frame.height, app.frame.height * 0.55)
@@ -222,7 +221,7 @@ final class UIReviewScreenshots: XCTestCase {
         let terminal = app.textViews["Mac terminal session"]
         XCTAssertTrue(terminal.waitForExistence(timeout: 8))
         terminal.tap()
-        XCTAssertTrue(app.buttons["terminal.key.Hide keyboard"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.keys["q"].firstMatch.waitForExistence(timeout: 8))
         // Real sessions have scrollback. Exercise interactive keyboard dismissal,
         // which can change focus while the rotation transition is also running.
         let top = terminal.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
@@ -230,7 +229,7 @@ final class UIReviewScreenshots: XCTestCase {
         top.press(forDuration: 0.05, thenDragTo: bottom)
         XCUIDevice.shared.orientation = .landscapeLeft
         app.navigationBars.buttons.matching(NSPredicate(format: "label == 'Show keyboard' OR label == 'Hide keyboard'")).firstMatch.tap()
-        if !app.buttons["terminal.key.Hide keyboard"].exists { terminal.tap() }
+        if !app.keys["q"].firstMatch.exists { terminal.tap() }
         for direction: UIDeviceOrientation in [.landscapeLeft, .portrait] {
             XCUIDevice.shared.orientation = direction
             let escape = app.buttons["terminal.key.Up arrow"]
@@ -271,7 +270,7 @@ final class UIReviewScreenshots: XCTestCase {
             shot.name = "terminal-menu-controls-\(direction.rawValue)"
             shot.lifetime = .keepAlways
             add(shot)
-            app.buttons["terminal.key.Hide keyboard"].tap()
+            app.navigationBars.buttons["Hide keyboard"].firstMatch.tap()
         }
     }
 
