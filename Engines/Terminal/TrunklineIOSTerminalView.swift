@@ -273,7 +273,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     {
         link = CADisplayLink(target: self, selector: #selector(step))
 
-        link.add(to: .current, forMode: .default)
+        link.add(to: .current, forMode: .common)
         suspendDisplayUpdates()
     }
 
@@ -341,6 +341,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     @objc
     func step(displaylink: CADisplayLink) {
+        displaylink.isPaused = true
         updateDisplay()
     }
 
@@ -1141,13 +1142,21 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // Native scrolling owns the visible offset. New output follows only when
         // the reader was already at the bottom, including synchronized updates.
         let previous = contentOffset.y
-        let oldBottom = max(0, contentSize.height - bounds.height)
+        let oldBottom = bottomContentOffset
         let following = previous >= oldBottom - 1
         let displayBuffer = terminal.displayBuffer
-        contentSize = CGSize(width: CGFloat(displayBuffer.cols) * cellDimension.width,
-                             height: CGFloat(displayBuffer.lines.count) * cellDimension.height)
-        let bottom = max(0, contentSize.height - bounds.height)
-        contentOffset = CGPoint(x: 0, y: following ? bottom : min(max(0, previous), bottom))
+        let size = CGSize(width: CGFloat(displayBuffer.cols) * cellDimension.width,
+                          height: CGFloat(displayBuffer.lines.count) * cellDimension.height)
+        if contentSize != size { contentSize = size }
+        let bottom = bottomContentOffset
+        setVerticalOffset(following ? bottom : min(max(0, previous), bottom))
+    }
+
+    private var bottomContentOffset: CGFloat { max(0, contentSize.height - bounds.height) }
+
+    private func setVerticalOffset(_ y: CGFloat) {
+        let offset = CGPoint(x: 0, y: y)
+        if contentOffset != offset { contentOffset = offset }
     }
 
     var userScrolling = false
@@ -1202,7 +1211,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             let following = currentBounds.minY >= max(0, contentSize.height - previousHeight) - 1
             processSizeChange(newSize: currentBounds.size)
             if following {
-                contentOffset = CGPoint(x: 0, y: max(0, contentSize.height - bounds.height))
+                setVerticalOffset(bottomContentOffset)
             }
             updateCursorPosition()
         }
@@ -1400,8 +1409,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     func ensureCaretIsVisible ()
     {
-        let displayBuffer = terminal.displayBuffer
-        contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
+        setVerticalOffset(bottomContentOffset)
     }
 
     public func deleteBackward() {

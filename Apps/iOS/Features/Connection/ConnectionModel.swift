@@ -29,6 +29,9 @@ final class ConnectionModel: ObservableObject {
     @Published var connectionStatus = ""
     private var remote: RemoteConnection?
     private var preparing: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
+    private let retryDelays: [Duration] = [.milliseconds(400), .seconds(1), .seconds(2), .seconds(8), .seconds(15), .seconds(30)]
+    private var retryCount = 0
     private(set) var sessionPairingLink = ""
     var hasAwayAccess: Bool {
         guard let pairing = try? PairingDetails.parse(pairingText) else { return false }
@@ -47,23 +50,41 @@ final class ConnectionModel: ObservableObject {
     @Published var desktopDisplay = DesktopDisplay.fallback
     @Published var sessions: [TerminalSessionInfo] = []
     @Published var selectedTerminalID: UUID?
-    @Published var workspaceSection: WorkspaceSection = .desktop
-    // Keep the authenticated credential only for this app process. Persistent
+    @Published var workspaceSection: WorkspaceSection = .desktop {
+        didSet { if workspaceSection != .desktop { cancelDesktop() } }
+    }
+    @Published private var desktopResumeMacID: String?
+    var wantsDesktopOpen: Bool {
+        guard let desktopResumeMacID else { return false }
+        return desktopResumeMacID == selectedMacID
+    }
+    var shouldShowReconnect: Bool {
+        guard phase != .connected else { return false }
+        if let resume = resumeConnection, resume.pairingLink == pairingText,
+           resume.authenticated || resume.usedSavedPasscode { return true }
+        return isUnlockingSaved || canResumeSavedLaunch ||
+            (wantsDesktopOpen && phase != .setup)
+    }
+    // Keep the connection credential only for this app process. Persistent
     // credentials remain in the user-presence-protected Keychain.
     private struct ResumeConnection {
         let pairingLink: String
         let passcode: String
+        var rememberPasscode: Bool
+        let usedSavedPasscode: Bool
+        var authenticated = false
         var terminalID: UUID?
     }
     private var resumeConnection: ResumeConnection?
+    var canRetryConnection: Bool { resumeConnection?.pairingLink == pairingText }
     private var pendingTerminalRestore: UUID?
-    private var handledLaunchResume = false
+    @Published private var handledLaunchResume = false
     private var isForeground = true
     private var windowFocused = true
     private let awakeID = UUID()
     private static var awakeWindows: Set<UUID> = []
     private let resumeStorageKey: String
-    private var isUnlockingSaved = false
+    @Published private var isUnlockingSaved = false
     @Published private(set) var hasLoadedTerminals = false
     @Published private(set) var isCreatingTerminal = false
     @Published private(set) var closingTerminalIDs: Set<UUID> = []
@@ -167,6 +188,7 @@ final class ConnectionModel: ObservableObject {
         precondition(terminalCloseTimeout > 0)
         self.defaults = defaults
         self.resumeStorageKey = resumeStorageKey
+        desktopResumeMacID = defaults.string(forKey: resumeStorageKey + ".desktop")
         self.handledLaunchResume = !automaticallyResume
         self.macStore = SavedMacStore(defaults: defaults)
         self.heartbeatInterval = heartbeatInterval
@@ -205,6 +227,11 @@ final class ConnectionModel: ObservableObject {
         return nil
     }
     var canUnlockSaved: Bool { savedCredentialKey != nil }
+    private var canResumeSavedLaunch: Bool {
+        guard !handledLaunchResume, let id = selectedMacID,
+              defaults.string(forKey: resumeStorageKey) == id else { return false }
+        return canUnlockSaved
+    }
     func selectMac(_ id: String) {
         guard phase == .setup, let mac = savedMacs.first(where: { $0.id == id }) else { return }
         clearResume()
@@ -257,46 +284,64 @@ final class ConnectionModel: ObservableObject {
     }
     func connect() {
         guard phase == .setup, isForeground else { return }
-        cancelLocalProbe(); offerAwayAccess = false
-        diagnostic.begin(route: useAwayAccess ? .away : .local)
+        if passcode.isEmpty, canRetryConnection {
+            retryCount = 0
+            startConnection()
+            return
+        }
         do {
             let pairing = try saveRemoteTicket(PairingDetails.parse(pairingText))
-            pairingText = pairing.link
             guard !passcode.isEmpty else { error = "Enter the connection passcode you set on your Mac."; return }
-            if !useAwayAccess { beginChannel(pairing); return }
+            pairingText = pairing.link
+            resumeConnection = ResumeConnection(pairingLink: pairing.link, passcode: passcode,
+                                                rememberPasscode: rememberPasscode, usedSavedPasscode: isUnlockingSaved)
+            passcode = ""
+            retryCount = 0
+            startConnection()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func startConnection() {
+        guard let resume = resumeConnection, canRetryConnection else { return }
+        cancelLocalProbe(); offerAwayAccess = false
+        diagnostic.begin(route: useAwayAccess ? .away : .local)
+        pendingTerminalRestore = resume.terminalID
+        do {
+            let pairing = try PairingDetails.parse(resume.pairingLink)
+            if !useAwayAccess { beginChannel(pairing, passcode: resume.passcode); return }
             guard let data = SecretStore.read(RemoteAccessTicket.storageKey(pairing.fingerprint)) else {
-                error = "Enable Away access on your Mac, then scan its updated QR code."; return
+                connectionFailed("Enable Away access on your Mac, then scan its updated QR code.", cause: .directRouteUnavailable)
+                return
             }
             let ticket = try JSONDecoder().decode(RemoteAccessTicket.self, from: data)
             try ticket.validate()
             phase = .connecting; error = nil; connectionStatus = "Establishing a direct connection…"
             setAwake(true)
             let remote = RemoteConnection(); self.remote = remote
-            remote.onLost = { [weak self] message in self?.disconnect(); self?.error = message; self?.diagnostic.fail(.interrupted) }
+            remote.onLost = { [weak self] message in self?.transportFailed(message, cause: .interrupted) }
             let id = UUID(); connectionID = id
             preparing = Task { [weak self] in
                 do {
                     try await remote.start(ticket)
                     guard let self, self.connectionID == id, !Task.isCancelled else { return }
                     let local = try PairingDetails(host: "127.0.0.1", port: pairing.port, fingerprint: pairing.fingerprint)
-                    self.beginChannel(local)
+                    self.beginChannel(local, passcode: resume.passcode)
                 } catch {
                     guard let self, self.connectionID == id else { return }
-                    self.disconnect(); self.error = error.localizedDescription
-                    let remoteError = error as NSError
-                    self.diagnostic.fail(remoteError.domain == "Remote" && remoteError.code == 2 ? .clientBusy : .directRouteUnavailable)
+                    switch error as? RemoteConnection.StartFailure {
+                    case .closing: self.transportFailed(error.localizedDescription, cause: .clientBusy)
+                    case .interrupted: self.transportFailed(error.localizedDescription, cause: .directRouteUnavailable)
+                    case .inUse: self.connectionFailed(error.localizedDescription, cause: .clientBusy)
+                    default: self.connectionFailed(error.localizedDescription, cause: .directRouteUnavailable)
+                    }
                 }
             }
-        } catch { self.error = error.localizedDescription; phase = .setup }
+        } catch { connectionFailed(error.localizedDescription, cause: .directRouteUnavailable) }
     }
-    private func beginChannel(_ pairing: PairingDetails) {
-            guard !passcode.isEmpty else { error = "Enter the connection passcode you set on your Mac."; return }
+    private func beginChannel(_ pairing: PairingDetails, passcode: String) {
             diagnostic.advance(.secureConnection)
             sessionPairingLink = pairing.link
             connectionStatus = useAwayAccess ? "Direct connection established. Authenticating…" : "Connecting to your Mac…"
             let connectionLink = pairingText
-            let shouldRememberPasscode = rememberPasscode
-            var connectionPasscode = passcode
             error = nil; phase = .connecting
             let id = UUID(); connectionID = id
             let channel = makeChannel(pairing)
@@ -307,8 +352,8 @@ final class ConnectionModel: ObservableObject {
                 self.diagnostic.advance(.authentication)
                 do {
                     let device = try self.deviceIdentity(pairing.fingerprint)
-                    channel?.send(.authenticate(passcode: connectionPasscode, device: device))
-                } catch { self.disconnect(); self.error = error.localizedDescription }
+                    channel?.send(.authenticate(passcode: passcode, device: device))
+                } catch { self.connectionFailed(error.localizedDescription, cause: .unknown) }
             }
             let timeout = DispatchWorkItem { [weak self] in
                 guard let self, self.connectionID == id, self.phase != .connected else { return }
@@ -316,7 +361,7 @@ final class ConnectionModel: ObservableObject {
                     ? "Couldn’t reach your Mac. Turn on My Mac → Sharing on the Mac, allow Local Network access on this device, and check that both devices use the same Wi-Fi or private VPN."
                     : "The Mac didn’t confirm your passcode. Check the Mac’s connection status and try again."
                 let cause: ConnectionFailureCause = self.phase == .authenticating ? .authenticationTimeout : .unreachable
-                self.disconnect(); self.error = message; self.diagnostic.fail(cause)
+                self.transportFailed(message, cause: cause)
             }
             handshakeTimeout = timeout
             DispatchQueue.main.asyncAfter(deadline: .now() + 18, execute: timeout)
@@ -356,6 +401,7 @@ final class ConnectionModel: ObservableObject {
                     self.loggedTerminalOutput = false
                     #endif
                     self.files.configure(fileFeatures: fileFeatures)
+                    self.resumeConnection?.authenticated = true
                     self.name = name; self.desktopDisplay = display; self.phase = .connected
                     self.diagnostic.advance(.connected)
                     defaults.set(connectionLink, forKey: "pairing-link")
@@ -366,15 +412,14 @@ final class ConnectionModel: ObservableObject {
                         self.savedMacs = self.macStore.macs
                         self.defaults.set(paired.fingerprint, forKey: self.resumeStorageKey)
                     }
-                    if shouldRememberPasscode {
+                    if let resume = self.resumeConnection, resume.rememberPasscode {
                         do {
                             let paired = try PairingDetails.parse(connectionLink)
-                            try SecretStore.writeProtected(Data(connectionPasscode.utf8), key: SavedMac.credentialKey(paired.fingerprint))
+                            try SecretStore.writeProtected(Data(resume.passcode.utf8), key: SavedMac.credentialKey(paired.fingerprint))
                         } catch { self.error = "Connected, but the passcode could not be saved." }
+                        self.resumeConnection?.rememberPasscode = false
                     }
-                    self.resumeConnection = ResumeConnection(pairingLink: connectionLink, passcode: connectionPasscode)
                     self.handledLaunchResume = true
-                    connectionPasscode = ""
                     self.passcode = ""
                     self.setAwake(true)
                     let heartbeat = Timer(timeInterval: self.heartbeatInterval, repeats: true) { [weak self] timer in
@@ -392,18 +437,26 @@ final class ConnectionModel: ObservableObject {
                         self.roundTripMS = Int(max(0, ProcessInfo.processInfo.systemUptime - sent) * 1000)
                         self.roundTripTime = ProcessInfo.processInfo.systemUptime
                         self.pingSent = nil
+                        self.retryCount = 0
                     }
                 case let .failure(message, cause):
-                    self.disconnect(); self.error = message; self.diagnostic.fail(cause ?? .unknown)
+                    if cause == .hostBusy, self.resumeConnection?.authenticated == true {
+                        self.transportFailed(message, cause: .hostBusy)
+                    } else {
+                        self.connectionFailed(message, cause: cause ?? .unknown)
+                    }
                 default: break
                 }
             }
             channel.onClose = { [weak self, weak channel] reason in
-                connectionPasscode = ""
                 guard let self, self.connectionID == id else { return }
-                self.diagnostic.fail(channel?.failureCause ?? .interrupted)
-                self.channel = nil; self.remote?.stop(); self.remote = nil; self.resetSession(); self.error = reason
-                self.checkLocalRoute()
+                let cause = channel?.failureCause ?? .interrupted
+                switch cause {
+                case .networkUnavailable, .addressNotFound, .notListening, .unreachable, .interrupted, .unknown:
+                    self.transportFailed(reason, cause: cause)
+                default:
+                    self.connectionFailed(reason, cause: cause)
+                }
             }
             channel.start()
     }
@@ -449,24 +502,64 @@ final class ConnectionModel: ObservableObject {
         passcode = ""
         stopConnection()
     }
+    func requestDesktop() {
+        guard phase == .connected, let id = selectedMacID, desktopResumeMacID != id else { return }
+        desktopResumeMacID = id
+        defaults.set(id, forKey: resumeStorageKey + ".desktop")
+    }
+    func cancelDesktop() {
+        guard desktopResumeMacID != nil else { return }
+        desktopResumeMacID = nil
+        defaults.removeObject(forKey: resumeStorageKey + ".desktop")
+    }
     private func clearResume() {
         connectionID = UUID()
         resumeConnection = nil
+        cancelDesktop()
         pendingTerminalRestore = nil
+        retryCount = 0
         handledLaunchResume = true
         defaults.removeObject(forKey: self.resumeStorageKey)
     }
     private func stopConnection() {
         cancelLocalProbe()
         connectionID = UUID()
+        retryTask?.cancel(); retryTask = nil
         preparing?.cancel(); preparing = nil
         remote?.stop(); remote = nil
         channel?.onClose = nil; channel?.close(); channel = nil
         resetSession()
     }
+    private func connectionFailed(_ message: String, cause: ConnectionFailureCause) {
+        disconnect()
+        error = message
+        diagnostic.fail(cause)
+    }
+    private func transportFailed(_ message: String, cause: ConnectionFailureCause) {
+        if phase == .connected && hasLoadedTerminals { resumeConnection?.terminalID = selectedTerminalID }
+        stopConnection()
+        diagnostic.fail(cause)
+        guard isForeground, canRetryConnection else {
+            error = message
+            checkLocalRoute()
+            return
+        }
+        let delay = retryDelays[retryCount]
+        retryCount = min(retryCount + 1, retryDelays.count - 1)
+        error = nil
+        connectionStatus = cause == .hostBusy ? "Waiting for your Mac to become available…" : "Connection interrupted. Retrying…"
+        phase = .connecting
+        let id = connectionID
+        retryTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, self.connectionID == id else { return }
+            self.retryTask = nil
+            self.startConnection()
+        }
+    }
     func applicationDidEnterBackground() {
         isForeground = false
-        if phase == .connected { resumeConnection?.terminalID = selectedTerminalID }
+        if phase == .connected && hasLoadedTerminals { resumeConnection?.terminalID = selectedTerminalID }
         // Release the host's single-device slot and stop streaming. This is a
         // suspension, not the user's explicit Disconnect action.
         stopConnection()
@@ -474,20 +567,21 @@ final class ConnectionModel: ObservableObject {
     }
     func applicationDidBecomeActive() async {
         guard !Task.isCancelled else { return }
+        let wasBackgrounded = !isForeground
         isForeground = true
         if phase == .connected { if windowFocused { files.clipboard.activate() }; return }
         guard phase == .setup else { return }
-        if let resume = resumeConnection {
-            guard pairingText == resume.pairingLink else { clearResume(); checkLocalRoute(); return }
-            pendingTerminalRestore = resume.terminalID
-            passcode = resume.passcode
-            rememberPasscode = false
-            connect()
+        if resumeConnection != nil {
+            if canRetryConnection {
+                if wasBackgrounded {
+                    retryCount = 0
+                    startConnection()
+                }
+            } else { clearResume() }
         } else if !handledLaunchResume {
+            let shouldUnlock = canResumeSavedLaunch
             handledLaunchResume = true
-            if let id = selectedMacID, defaults.string(forKey: self.resumeStorageKey) == id, canUnlockSaved {
-                await unlockSaved()
-            }
+            if shouldUnlock { await unlockSaved() }
         }
         if phase == .setup { checkLocalRoute() }
     }
@@ -506,9 +600,15 @@ final class ConnectionModel: ObservableObject {
         pathMonitor.start(queue: DispatchQueue(label: "com.trunkline.route"))
     }
     func networkChanged(available: Bool) {
+        let recovered = available && !networkAvailable
         networkAvailable = available
         offerAwayAccess = false
-        checkLocalRoute()
+        if recovered, isForeground, retryTask != nil {
+            retryTask?.cancel()
+            retryTask = nil
+            retryCount = 0
+            startConnection()
+        } else { checkLocalRoute() }
     }
     func checkLocalRoute() {
         cancelLocalProbe()
@@ -590,10 +690,7 @@ final class ConnectionModel: ObservableObject {
         let now = ProcessInfo.processInfo.systemUptime
         if let sent = pingSent {
             guard now - sent >= heartbeatTimeout else { return }
-            disconnect()
-            error = "Connection lost. Check your Mac and network, then reconnect."
-            diagnostic.fail(.interrupted)
-            checkLocalRoute()
+            transportFailed("Connection lost. Check your Mac and network, then reconnect.", cause: .interrupted)
         } else {
             pingSent = now
             channel?.send(.ping)

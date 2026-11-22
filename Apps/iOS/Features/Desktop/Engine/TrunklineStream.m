@@ -8,7 +8,6 @@
 #import "AppListResponse.h"
 #import "TemporaryApp.h"
 #import "DataManager.h"
-#import <VideoToolbox/VideoToolbox.h>
 #import <Limelight.h>
 #define SDL_MAIN_HANDLED
 #import <SDL.h>
@@ -35,6 +34,7 @@
     NSURLSessionDataTask *task;
     __block NSData *responseData;
     __block NSError *responseError;
+    __block NSInteger httpStatus;
     dispatch_semaphore_t finished = dispatch_semaphore_create(0);
     @synchronized (self) {
         if (_stopped) {
@@ -50,6 +50,7 @@
         session = [NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration delegate:self delegateQueue:nil];
         task = [session dataTaskWithRequest:request.request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             responseData = data; responseError = error;
+            if ([response isKindOfClass:NSHTTPURLResponse.class]) httpStatus = ((NSHTTPURLResponse *)response).statusCode;
             dispatch_semaphore_signal(finished);
         }];
         if (!_sessions) _sessions = [NSMutableSet new];
@@ -73,6 +74,7 @@
             responseData = [xml dataUsingEncoding:NSUTF8StringEncoding];
         }
         [request.response populateWithData:responseData];
+        if (request.response.statusCode == 0 && httpStatus >= 400) request.response.statusCode = httpStatus;
     } else {
         request.response.statusCode = responseError.code;
         request.response.statusMessage = responseError.localizedDescription;
@@ -109,6 +111,24 @@
 @interface TrunklineStream () <PairCallback>
 @end
 
+static BOOL TrunklineCanRetryDiscovery(NSInteger status) {
+    switch (status) {
+        case NSURLErrorTimedOut:
+        case NSURLErrorCannotFindHost:
+        case NSURLErrorCannotConnectToHost:
+        case NSURLErrorNetworkConnectionLost:
+        case NSURLErrorDNSLookupFailed:
+        case NSURLErrorNotConnectedToInternet:
+        case EHOSTDOWN:
+        case 502:
+        case 503:
+        case 504:
+            return YES;
+        default:
+            return NO;
+    }
+}
+
 @implementation TrunklineStream {
     NSOperationQueue *_queue;
     TemporaryHost *_host;
@@ -128,7 +148,7 @@
     }
     return self;
 }
-- (void)loadHost:(NSString *)address certificate:(NSData *)certificate completion:(void (^)(NSArray<NSDictionary<NSString *, NSString *> *> * _Nullable, NSString * _Nullable))completion {
+- (void)loadHost:(NSString *)address certificate:(NSData *)certificate completion:(void (^)(NSArray<NSDictionary<NSString *, NSString *> *> * _Nullable, NSString * _Nullable, BOOL))completion {
     NSUInteger generation;
     TrunklinePairingHttpManager *previous;
     @synchronized (self) {
@@ -155,7 +175,8 @@
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!self->_cancelled && self->_loadGeneration == generation) {
                     self->_loadingManager = nil;
-                    completion(nil, info.statusMessage ?: @"Trunkline Desktop is unreachable. Start Desktop on the Mac.");
+                    completion(nil, info.statusMessage ?: @"Trunkline Desktop is unreachable. Start Desktop on the Mac.",
+                               TrunklineCanRetryDiscovery(info.statusCode));
                 }
             });
             return;
@@ -164,7 +185,7 @@
         // Discovery is unauthenticated. Application listing and launch require the paired certificate.
         if (!certificate) {
             dispatch_async(dispatch_get_main_queue(), ^{ if (!self->_cancelled && self->_loadGeneration == generation) {
-                self->_loadingManager = nil; self->_host = host; self->_manager = manager; completion(@[], nil);
+                self->_loadingManager = nil; self->_host = host; self->_manager = manager; completion(@[], nil, NO);
             } });
             return;
         }
@@ -183,7 +204,7 @@
                     error = list.statusCode == 401 || list.statusCode == 403 ? @"Desktop pairing is no longer accepted. Check paired devices in Trunkline on your Mac."
                         : list.statusMessage ?: @"Could not load the desktop. Check the connection and retry.";
                 }
-                completion([list isStatusOk] ? apps : nil, error);
+                completion([list isStatusOk] ? apps : nil, error, TrunklineCanRetryDiscovery(list.statusCode));
             }
         });
     }];
@@ -203,15 +224,15 @@
 - (void)alreadyPaired { [self pairFailed:@"This device is already paired with Trunkline Desktop, but its certificate is missing here. Remove the old client on the Mac and pair again."]; }
 - (StreamConfiguration *)configurationForApp:(NSString *)appID title:(NSString *)title width:(int)width height:(int)height fps:(int)fps bitrate:(int)bitrate directTouch:(BOOL)directTouch framePacing:(BOOL)framePacing stats:(BOOL)stats {
     if (!_host.serverCert || _cancelled || !_host.httpsPort) return nil;
-    [[DataManager new] saveSettingsWithBitrate:bitrate framerate:fps height:height width:width audioConfig:2 onscreenControls:OnScreenControlsLevelOff optimizeGames:NO multiController:YES swapABXYButtons:NO audioOnPC:NO preferredCodec:CODEC_PREF_AUTO useFramePacing:framePacing enableHdr:NO btMouseSupport:NO absoluteTouchMode:directTouch statsOverlay:stats];
+    // The Mac desktop's VideoToolbox HEVC encoder can connect without producing
+    // an initial IDR. Use the same H.264 stream as the Mac companion client.
+    [[DataManager new] saveSettingsWithBitrate:bitrate framerate:fps height:height width:width audioConfig:2 onscreenControls:OnScreenControlsLevelOff optimizeGames:NO multiController:YES swapABXYButtons:NO audioOnPC:NO preferredCodec:CODEC_PREF_H264 useFramePacing:framePacing enableHdr:NO btMouseSupport:NO absoluteTouchMode:directTouch statsOverlay:stats];
     StreamConfiguration *config = [StreamConfiguration new];
     config.host = _host.activeAddress; config.httpsPort = _host.httpsPort;
     config.appID = appID; config.appName = title; config.serverCert = _host.serverCert;
     config.width = width; config.height = height; config.frameRate = fps; config.bitRate = bitrate;
     config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
     config.supportedVideoFormats = VIDEO_FORMAT_H264;
-    if (VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)) config.supportedVideoFormats |= VIDEO_FORMAT_H265;
-    if (@available(iOS 16.0, *)) { if (VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)) config.supportedVideoFormats |= VIDEO_FORMAT_AV1_MAIN8; }
     config.serverCodecModeSupport = _host.serverCodecModeSupport;
     config.multiController = YES; config.gamepadMask = [ControllerSupport getConnectedGamepadMask:config];
     config.useFramePacing = framePacing; config.playAudioOnPC = NO; config.optimizeGameSettings = NO;

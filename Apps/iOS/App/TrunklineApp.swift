@@ -30,6 +30,7 @@ private enum WorkspaceModels {
 @MainActor
 struct WorkspaceScene: View {
     @StateObject private var model: ConnectionModel
+    @State private var activationTask: Task<Void, Never>?
     init(initialMacID: String? = nil) {
         _model = StateObject(wrappedValue: WorkspaceModels.make(macID: initialMacID))
     }
@@ -56,6 +57,11 @@ struct WorkspaceScene: View {
     private var workspaceContent: some View {
         Group {
             if model.phase == .connected { ConnectedTabs(model: model) }
+            else if model.shouldShowReconnect {
+                ConnectionLoadingView(message: model.connectionStatus.isEmpty ? "Reconnecting to your Mac…" : model.connectionStatus) {
+                    model.disconnect()
+                }
+            }
             else { ConnectView(model: model) }
         }
     }
@@ -71,7 +77,7 @@ struct WorkspaceScene: View {
                 }
                 #endif
             }
-            .background(WindowFocusReader(changed: { model.setWindowFocused($0) }, disconnected: { model.applicationDidEnterBackground() }))
+            .background(WindowFocusReader(changed: { model.setWindowFocused($0) }, disconnected: suspendConnection))
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TrunklineDesktopStopped"))) { _ in model.refreshAwakeState() }
             .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in model.refreshSavedMacs() }
             .tint(Color("AccentColor"))
@@ -84,15 +90,12 @@ struct WorkspaceScene: View {
             }
             .onChange(of: scenePhase, initial: true) { _, phase in
                 if phase == .inactive { model.files.clipboard.pause() }
-                if phase == .background { model.applicationDidEnterBackground() }
+                if phase == .background { suspendConnection() }
                 else if phase == .active {
                     // Face ID temporarily makes the scene inactive. Do not cancel
                     // its unlock task during that transition. The model rejects
                     // stale results if the app actually enters the background.
-                    Task {
-                        guard UIApplication.shared.applicationState == .active else { return }
-                        await model.applicationDidBecomeActive()
-                    }
+                    activationTask = Task { await model.applicationDidBecomeActive() }
                 }
             }
             .onOpenURL { url in
@@ -108,5 +111,11 @@ struct WorkspaceScene: View {
             .alert("Connection", isPresented: Binding(get: { model.phase == .connected && model.error != nil }, set: { if !$0 { model.error = nil } })) {
                 Button("OK") { model.error = nil }
             } message: { Text(model.error ?? "") }
+    }
+
+    private func suspendConnection() {
+        activationTask?.cancel()
+        activationTask = nil
+        model.applicationDidEnterBackground()
     }
 }

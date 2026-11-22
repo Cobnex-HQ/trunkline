@@ -20,7 +20,9 @@ struct ConnectView: View {
     private var pairing: PairingDetails? { try? PairingDetails.parse(model.pairingText) }
     private var connecting: Bool { model.phase != .setup }
     private var compactConnection: Bool { verticalSizeClass == .compact && pairing != nil }
-    private var savedUnlock: Bool { model.canUnlockSaved && model.passcode.isEmpty && !connecting && !usePasscode }
+    private var savedUnlock: Bool {
+        model.canUnlockSaved && model.passcode.isEmpty && !model.canRetryConnection && !connecting && !usePasscode
+    }
 
     var body: some View {
         NavigationStack {
@@ -240,7 +242,7 @@ struct ConnectView: View {
                     .trunklineActionLabel()
             }
             .trunklineActionStyle(prominent: true)
-            .disabled(!savedUnlock && model.passcode.isEmpty)
+            .disabled(!savedUnlock && model.passcode.isEmpty && !model.canRetryConnection)
             if savedUnlock {
                 Button("Use passcode instead") {
                     usePasscode = true

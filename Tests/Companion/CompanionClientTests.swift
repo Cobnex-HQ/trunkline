@@ -174,6 +174,20 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertTrue(failures.isEmpty)
     }
 
+    func testCancelledAwayStartExitsBeforeOpeningTheWorker() async throws {
+        let ticket = RemoteAccessTicket(config: .init(key: [1, 2, 3], expected: "12D3KooWfixture"),
+                                        helper: "/ip4/203.0.113.1/udp/4001/quic-v1/p2p/12D3KooWfixture")
+        let remote = RemoteConnection()
+        let start = Task { try await remote.start(ticket) }
+        start.cancel()
+        do {
+            try await start.value
+            XCTFail("Cancelled Away startup must exit before opening a worker")
+        } catch is CancellationError {
+            // Cancelling before the task runs must take precedence over starting the tunnel.
+        }
+    }
+
     func testBackgroundDuringSavedUnlockDiscardsTheResultAndDoesNotPromptTwice() async throws {
         let suite = "resume-unlock-\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -202,6 +216,7 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertEqual(connections, 0)
         XCTAssertEqual(model.phase, .setup)
         XCTAssertEqual(model.passcode, "")
+        XCTAssertFalse(model.shouldShowReconnect, "A canceled saved unlock must return to the connection form")
         await model.applicationDidBecomeActive()
         XCTAssertEqual(unlocks, 1, "Cancelling an unlock must not create a prompt loop")
     }
@@ -230,11 +245,15 @@ final class CompanionClientTests: XCTestCase {
         original.passcode = "fixture-passcode"
         original.connect()
         try await terminalEventually { original.phase == .connected }
+        original.requestDesktop()
         original.applicationDidEnterBackground()
+        XCTAssertTrue(original.shouldShowReconnect)
         let relaunched = makeModel()
         defer { original.disconnect(); relaunched.disconnect() }
+        XCTAssertTrue(relaunched.shouldShowReconnect, "Show loading before the saved unlock starts")
         await relaunched.applicationDidBecomeActive()
         try await terminalEventually { relaunched.phase == .connected }
+        XCTAssertTrue(relaunched.wantsDesktopOpen)
         await relaunched.applicationDidBecomeActive()
         XCTAssertEqual(unlocks, 1)
         XCTAssertEqual(server.authentications, 2)
@@ -243,8 +262,27 @@ final class CompanionClientTests: XCTestCase {
         defer { afterDisconnect.disconnect() }
         await afterDisconnect.applicationDidBecomeActive()
         XCTAssertEqual(afterDisconnect.phase, .setup)
+        XCTAssertFalse(afterDisconnect.shouldShowReconnect)
+        XCTAssertFalse(afterDisconnect.wantsDesktopOpen)
         XCTAssertEqual(unlocks, 1, "Explicit disconnect must not trigger another biometric prompt")
         XCTAssertFalse(defaults.dictionaryRepresentation().values.contains { ($0 as? String) == "fixture-passcode" })
+    }
+
+    func testSavedRelaunchShowsLoadingAfterUnlockWhileTheMacConnects() async throws {
+        let suite = "resume-handshake-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let pairing = try PairingDetails(host: "127.0.0.1", port: 47995, fingerprint: String(repeating: "d", count: 64))
+        defaults.set(pairing.fingerprint, forKey: "resume-mac-id")
+        let model = ConnectionModel(defaults: defaults, containsSavedSecret: { $0 == SavedMac.credentialKey(pairing.fingerprint) },
+                                    unlockSavedSecret: { _ in Data("fixture-passcode".utf8) })
+        defer { model.disconnect() }
+        model.pairingText = pairing.link
+
+        XCTAssertTrue(model.shouldShowReconnect)
+        await model.applicationDidBecomeActive()
+        XCTAssertEqual(model.phase, .connecting)
+        XCTAssertTrue(model.shouldShowReconnect, "The login form must stay hidden after biometrics finish")
     }
 
     func testBackgroundReturnRestoresAuthenticatedTerminalWithoutTypingPasscode() async throws {
@@ -270,23 +308,95 @@ final class CompanionClientTests: XCTestCase {
         model.workspaceSection = .terminal
         model.applicationDidEnterBackground()
         XCTAssertEqual(model.phase, .setup, "Backgrounding must release the host for another device")
+        XCTAssertTrue(model.shouldShowReconnect, "Terminal resume must hide the login form before foreground work runs")
+        server.dropAuthentications = 1
         await model.applicationDidBecomeActive()
         try await terminalEventually { model.phase == .connected && model.hasLoadedTerminals }
-        XCTAssertEqual(server.authentications, 2)
+        XCTAssertEqual(server.authentications, 3)
         XCTAssertEqual(model.selectedTerminalID, session.id)
         XCTAssertEqual(model.workspaceSection, .terminal)
-        XCTAssertEqual(server.authenticationPasscodes, ["fixture-passcode", "fixture-passcode"])
+        XCTAssertEqual(server.authenticationPasscodes, ["fixture-passcode", "fixture-passcode", "fixture-passcode"])
         XCTAssertEqual(server.creations, 0, "Resume must not start another terminal")
         model.applicationDidEnterBackground()
         model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "f", count: 64)).link
         await model.applicationDidBecomeActive()
         XCTAssertEqual(model.phase, .setup, "A previous Mac's session must not authenticate a different pairing")
         XCTAssertEqual(model.passcode, "")
-        XCTAssertEqual(server.authentications, 2)
+        XCTAssertEqual(server.authentications, 3)
         model.disconnect()
         await model.applicationDidBecomeActive()
         XCTAssertEqual(model.phase, .setup, "An explicit disconnect must stay disconnected")
-        XCTAssertEqual(server.authentications, 2)
+        XCTAssertEqual(server.authentications, 3)
+    }
+
+    func testAppSwitchDuringInitialConnectResumesTheAttempt() async throws {
+        let ready = expectation(description: "Initial connection fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "resume-initial-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "e", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        model.applicationDidEnterBackground()
+        await model.applicationDidBecomeActive()
+        try await terminalEventually { model.phase == .connected }
+        XCTAssertEqual(server.authenticationPasscodes, ["fixture-passcode"])
+        XCTAssertTrue(model.passcode.isEmpty)
+    }
+
+    func testInitialConnectionKeepsRetryingAfterTheFastAttempts() async throws {
+        let ready = expectation(description: "Retry limit fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        server.dropAuthentications = 4
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "retry-limit-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "c", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually(timeout: 15) { model.phase == .connected }
+        XCTAssertEqual(server.authenticationPasscodes, Array(repeating: "fixture-passcode", count: 5))
+    }
+
+    func testNetworkRecoverySkipsTheReconnectBackoff() async throws {
+        let ready = expectation(description: "Network recovery fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        server.dropAuthentications = 4
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "network-recovery-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "a", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        model.networkChanged(available: false)
+        try await terminalEventually(timeout: 8) { server.authentications == 4 && model.diagnostic.failure != nil }
+        XCTAssertEqual(model.phase, .connecting)
+        XCTAssertNil(model.error)
+        model.networkChanged(available: true)
+        try await terminalEventually { model.phase == .connected }
+        XCTAssertEqual(server.authenticationPasscodes, Array(repeating: "fixture-passcode", count: 5))
     }
 
     func testBackgroundReturnHonoursAnotherDeviceUsingTheMac() async throws {
@@ -314,6 +424,52 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertEqual(model.phase, .setup)
         await model.applicationDidBecomeActive()
         XCTAssertEqual(server.authentications, 2, "A rejected resume must not keep retrying")
+    }
+
+    func testPreviouslyConnectedDeviceWaitsForTheMacToReleaseItsSlot() async throws {
+        let ready = expectation(description: "Busy Mac fixture")
+        let server = try TerminalCreationServer(ready: ready, sessions: [])
+        defer { server.stop() }
+        await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
+        let port = try XCTUnwrap(server.listener.port)
+        let suite = "retry-busy-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults, deviceIdentity: { _ in DeviceClaim(name: "Fixture device") }, makeChannel: { _ in
+            SecureChannel(connection: NWConnection(host: "127.0.0.1", port: port, using: .tcp))
+        })
+        defer { model.disconnect() }
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: port.rawValue, fingerprint: String(repeating: "b", count: 64)).link
+        model.passcode = "fixture-passcode"
+        model.connect()
+        try await terminalEventually { model.phase == .connected }
+        model.applicationDidEnterBackground()
+        server.rejection = "Mac in use"
+        server.rejectionCause = .hostBusy
+        await model.applicationDidBecomeActive()
+        try await terminalEventually { model.diagnostic.failure == .hostBusy }
+        XCTAssertNil(model.error)
+        server.rejection = nil
+        try await terminalEventually { model.phase == .connected }
+        XCTAssertEqual(server.authenticationPasscodes, Array(repeating: "fixture-passcode", count: 3))
+    }
+
+    func testTerminalTypingKeepsTheLiveViewportStillBeforeTheEchoArrives() async throws {
+        let terminal = SessionTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 317),
+            font: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        let recorder = TerminalInputRecorder()
+        terminal.terminalDelegate = recorder
+        terminal.layoutIfNeeded()
+        terminal.feed(text: String(repeating: "history\r\n", count: 100))
+        try await terminalEventually { terminal.contentSize.height > 600 }
+        terminal.jumpToLatest()
+        let offset = terminal.contentOffset.y
+        for character in "fast typing" {
+            terminal.insertText(String(character))
+            XCTAssertEqual(terminal.contentOffset.y, offset, accuracy: 0.1)
+            terminal.feed(text: String(character))
+        }
+        XCTAssertEqual(recorder.bytes, Array("fast typing".utf8))
     }
 
     func testEndingSessionWaitsForMacConfirmationAndDeduplicatesRequests() async throws {
@@ -900,6 +1056,7 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertEqual(model.error, server.rejection)
         XCTAssertEqual(model.diagnostic.failure, .hostBusy)
         XCTAssertEqual(model.phase, .setup)
+        XCTAssertFalse(model.canRetryConnection)
     }
 
     func testTerminalCreationWaitsForInitialSessionList() async throws {
@@ -1126,7 +1283,7 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertFalse(terminal.controlModifier, "Leaving input must not leave a hidden modifier armed")
     }
 
-    func testSilentCompanionStopsPingingAndReturnsToSetupAfterDeadline() async throws {
+    func testSilentCompanionReconnectsAfterHeartbeatDeadline() async throws {
         let ready = expectation(description: "Companion fixture listening")
         let pongSent = expectation(description: "Initial ping received a real reply")
         let closed = expectation(description: "Stalled channel closed by client")
@@ -1148,15 +1305,11 @@ final class CompanionClientTests: XCTestCase {
         try await terminalEventually { model.roundTripMS != nil }
         XCTAssertEqual(model.phase, .connected)
         await fulfillment(of: [closed], timeout: 2)
-        XCTAssertEqual(model.phase, .setup)
-        XCTAssertNotNil(model.error)
         XCTAssertNil(model.roundTripMS)
         XCTAssertEqual(server.pings, 2, "Do not overwrite the outstanding ping or queue more pings on a stalled link")
         XCTAssertTrue(model.passcode.isEmpty)
-        // A fresh authenticated attempt must work after the stale connection closes.
+        // Recover when the replacement channel can reach the Mac again.
         server.replyEveryPing = true
-        model.passcode = "fixture-passcode"
-        model.connect()
         try await terminalEventually { model.phase == .connected && model.roundTripMS != nil }
         try await Task.sleep(for: .milliseconds(350))
         XCTAssertEqual(model.phase, .connected, "Timely replies must keep the new connection alive across deadlines")
@@ -1231,7 +1384,7 @@ final class CompanionClientTests: XCTestCase {
         await fulfillment(of: [ready], timeout: fixtureStartupTimeout)
         let engine = TrunklineStream()
         defer { engine.cancel() }
-        engine.loadHost("127.0.0.1:\(try XCTUnwrap(server.port))", certificate: nil) { apps, error in
+        engine.loadHost("127.0.0.1:\(try XCTUnwrap(server.port))", certificate: nil) { apps, error, _ in
             XCTAssertNil(error)
             XCTAssertEqual(apps?.count, 0, "Unpaired discovery cannot expose authenticated applications")
             loaded.fulfill()
@@ -1346,6 +1499,54 @@ final class CompanionClientTests: XCTestCase {
         XCTAssertNil(desktop.error)
     }
 
+    func testOpeningDesktopRetriesDiscoveryWhileTheMacStartsIt() async throws {
+        let engine = ControlledDesktopEngine()
+        let desktop = DesktopSession(engineFactory: { engine })
+        defer { desktop.close() }
+        let link = try PairingDetails(host: "127.0.0.1", port: 47995, fingerprint: String(repeating: "f", count: 64)).link
+        desktop.open(pairingLink: link) { _ in }
+        desktop.openDesktop()
+        engine.loads[0](nil, "Desktop is still starting", true)
+        try await terminalEventually { engine.loads.count == 2 }
+        guard engine.loads.count == 2 else { return }
+        XCTAssertNil(desktop.error)
+        engine.loads[1]([], nil, false)
+        try await terminalEventually { engine.pairings == 1 }
+    }
+
+    func testRestoredDesktopOpenStartsWithoutTappingOpenAgain() async throws {
+        let engine = ControlledDesktopEngine()
+        let configuration = StreamConfiguration()
+        engine.launchConfiguration = configuration
+        let pairing = try PairingDetails(host: "127.0.0.1", port: 47995, fingerprint: String(repeating: "0", count: 64))
+        let key = DesktopTrustKey.current(pairing)
+        let desktop = DesktopSession(readCertificate: { $0 == key ? Data([1]) : nil }, engineFactory: { engine })
+        defer { desktop.close() }
+        desktop.open(pairingLink: pairing.link, automaticallyOpen: true) { _ in
+            XCTFail("An already paired desktop should reuse its certificate")
+        }
+        engine.loads[0]([["id": "1", "name": "Desktop"]], nil)
+        try await terminalEventually { desktop.presenting }
+        XCTAssertTrue(desktop.stream === configuration)
+    }
+
+    func testClosingDesktopOrSwitchingWorkspaceClearsItsOpenIntent() throws {
+        let suite = "desktop-intent-\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = ConnectionModel(defaults: defaults)
+        model.pairingText = try PairingDetails(host: "127.0.0.1", port: 47995, fingerprint: String(repeating: "a", count: 64)).link
+        model.phase = .connected
+        model.requestDesktop()
+        XCTAssertTrue(model.wantsDesktopOpen)
+        model.cancelDesktop()
+        XCTAssertFalse(model.wantsDesktopOpen)
+        model.requestDesktop()
+        model.workspaceSection = .terminal
+        model.workspaceSection = .desktop
+        XCTAssertFalse(model.wantsDesktopOpen)
+    }
+
     func testDesktopCancelClearsPairingAndCloseClearsReadiness() async throws {
         var engines: [ControlledDesktopEngine] = []
         let desktop = DesktopSession(engineFactory: { let engine = ControlledDesktopEngine(); engines.append(engine); return engine })
@@ -1409,7 +1610,7 @@ final class CompanionClientTests: XCTestCase {
         let port = try XCTUnwrap(server.port)
         let engine = TrunklineStream()
         defer { engine.cancel() }
-        engine.loadHost("127.0.0.1:\(port)", certificate: nil) { _, _ in
+        engine.loadHost("127.0.0.1:\(port)", certificate: nil) { _, _, _ in
             XCTFail("A cancelled discovery must not deliver a UI result")
         }
         await fulfillment(of: [received], timeout: 3)
@@ -1560,10 +1761,24 @@ final class CompanionClientTests: XCTestCase {
 }
 
 private final class ControlledDesktopEngine: TrunklineStream {
-    var loads: [([[String: String]]?, String?) -> Void] = []
+    struct Discovery {
+        let completion: ([[String: String]]?, String?, Bool) -> Void
+        func callAsFunction(_ apps: [[String: String]]?, _ error: String?, _ retryable: Bool = false) {
+            completion(apps, error, retryable)
+        }
+    }
+    var loads: [Discovery] = []
+    private(set) var pairings = 0
+    var launchConfiguration: StreamConfiguration?
     var cancellations = 0
-    override func loadHost(_ address: String, certificate: Data?, completion: @escaping ([[String: String]]?, String?) -> Void) { loads.append(completion) }
-    override func pair() {}
+    override func loadHost(_ address: String, certificate: Data?, completion: @escaping ([[String: String]]?, String?, Bool) -> Void) {
+        loads.append(Discovery(completion: completion))
+    }
+    override func pair() { pairings += 1 }
+    override func configuration(forApp appID: String, title: String, width: Int32, height: Int32, fps: Int32,
+                                bitrate: Int32, directTouch: Bool, framePacing: Bool, stats: Bool) -> StreamConfiguration? {
+        launchConfiguration
+    }
     override func cancel() { cancellations += 1; super.cancel() }
 }
 
@@ -1669,7 +1884,7 @@ private struct TerminalKeyboardFixture: View {
                     default: break
                     }
                 }
-                channel.onClose = { _ in closed.fulfill() }
+                if !self.replyEveryPing { channel.onClose = { _ in closed.fulfill() } }
                 channel.start()
             }
         }
@@ -1690,6 +1905,7 @@ private struct TerminalKeyboardFixture: View {
     var holdLists = false
     var rejection: String?
     var rejectionCause: ConnectionFailureCause?
+    var dropAuthentications = 0
     private(set) var authentications = 0
     private(set) var authenticationPasscodes: [String] = []
     private(set) var creations = 0
@@ -1714,6 +1930,11 @@ private struct TerminalKeyboardFixture: View {
                     case let .authenticate(passcode, _):
                         self.authentications += 1
                         self.authenticationPasscodes.append(passcode)
+                        if self.dropAuthentications > 0 {
+                            self.dropAuthentications -= 1
+                            channel?.close()
+                            return
+                        }
                         if let rejection = self.rejection { channel?.reject(rejection, cause: self.rejectionCause) }
                         else { channel?.send(.accepted(name: "Fixture Mac", display: .fallback)) }
                     case .ping: channel?.send(.pong)

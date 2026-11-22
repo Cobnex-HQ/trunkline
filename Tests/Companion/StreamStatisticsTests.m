@@ -2,6 +2,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import "StreamManager.h"
 #import "VideoDecoderRenderer.h"
+#import "TrunklineStream.h"
+
+@interface NSObject (FixtureDesktopSettings)
+- (id)getSettings;
+@end
 
 // Use the production formatter and substitute only the connection's counters.
 // No stream is started and no real host or credentials are accessed.
@@ -17,6 +22,26 @@
 @interface StreamStatisticsTests : XCTestCase
 @end
 @implementation StreamStatisticsTests
+- (void)testDesktopLaunchRequestsH264EvenWhenTheHostAdvertisesHEVC {
+    NSObject *host = [NSClassFromString(@"TemporaryHost") new];
+    XCTAssertNotNil(host);
+    [host setValue:@"127.0.0.1:47989" forKey:@"activeAddress"];
+    [host setValue:@47984 forKey:@"httpsPort"];
+    [host setValue:[NSData dataWithBytes:"fixture" length:7] forKey:@"serverCert"];
+    [host setValue:@(SCM_H264 | SCM_HEVC) forKey:@"serverCodecModeSupport"];
+    TrunklineStream *stream = [TrunklineStream new];
+    [stream setValue:host forKey:@"host"];
+
+    StreamConfiguration *config = [stream configurationForApp:@"1" title:@"Desktop" width:1280 height:720
+        fps:60 bitrate:4000 directTouch:YES framePacing:NO stats:NO];
+
+    XCTAssertNotNil(config);
+    XCTAssertEqual(config.supportedVideoFormats, VIDEO_FORMAT_H264);
+    id settings = [[NSClassFromString(@"DataManager") new] getSettings];
+    XCTAssertEqualObjects([settings valueForKey:@"preferredCodec"], @1); // CODEC_PREF_H264
+    [stream cancel];
+}
+
 - (void)testUnsupportedVideoCodecRequestsRecoveryWithoutTerminatingTheApp {
     VideoDecoderRenderer *renderer = [[VideoDecoderRenderer alloc] initWithView:[UIView new]
         callbacks:nil streamAspectRatio:16.0f / 9.0f useFramePacing:NO];

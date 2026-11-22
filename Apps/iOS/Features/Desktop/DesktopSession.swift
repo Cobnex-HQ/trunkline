@@ -22,21 +22,32 @@ final class DesktopSession: ObservableObject {
     @Published var adaptiveQuality = true { didSet { persist(\.adaptiveQuality, adaptiveQuality) } }
     private(set) var engine: TrunklineStream
     private let engineFactory: () -> TrunklineStream
+    private let readCertificate: (String) -> Data?
     private var preferenceID: String?
     private var preferences = MacPreferencesStore()
     private let discoveryTimeout: Duration
     private let pairingTimeout: Duration
+    private let discoveryRetryDelays: [Duration] = [.milliseconds(250), .seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(15)]
+    private var discoveryRetryCount = 0
+    private var discovering = false
     private var deadline: Task<Void, Never>?
     private var operationID: UUID?
     private var address = ""
     private var certificateKey = ""
     private var closed = false
     private var openRequested = false
+    private var restoringDesktop = false
+    private var pendingLaunch: Application?
+    private static let occupiedMessage = "A desktop is open in another window. Close that desktop before opening this one."
+    var canOpenDesktop: Bool { !busy || discovering }
+    var awaitingOpen: Bool { address.isEmpty || busy }
     private var approvePairing: ((DesktopPairRequest) -> Void)?
     var display = DesktopDisplay.fallback
     init(discoveryTimeout: Duration = .seconds(15), pairingTimeout: Duration = .seconds(30),
+         readCertificate: @escaping (String) -> Data? = { SecretStore.read($0) },
          engineFactory: @escaping () -> TrunklineStream = { TrunklineStream() }) {
         self.discoveryTimeout = discoveryTimeout; self.pairingTimeout = pairingTimeout
+        self.readCertificate = readCertificate
         self.engineFactory = engineFactory; self.engine = engineFactory()
     }
     func configurePreferences(macID: String, store: MacPreferencesStore) {
@@ -51,13 +62,15 @@ final class DesktopSession: ObservableObject {
         guard let preferenceID else { return }
         preferences.update(preferenceID) { $0[keyPath: key] = value }
     }
-    func open(pairingLink: String, approvePairing: @escaping (DesktopPairRequest) -> Void) {
+    func open(pairingLink: String, automaticallyOpen: Bool = false, approvePairing: @escaping (DesktopPairRequest) -> Void) {
         guard address.isEmpty else { return }
+        openRequested = automaticallyOpen
+        restoringDesktop = automaticallyOpen
         do {
             let pairing = try PairingDetails.parse(pairingLink)
             address = pairing.host.contains(":") ? "[\(pairing.host)]:47989" : "\(pairing.host):47989"
             certificateKey = DesktopTrustKey.current(pairing)
-            if SecretStore.read(certificateKey) == nil, let certificate = SecretStore.read(DesktopTrustKey.legacy(pairing)) {
+            if readCertificate(certificateKey) == nil, let certificate = readCertificate(DesktopTrustKey.legacy(pairing)) {
                 try SecretStore.write(certificate, key: certificateKey)
             }
             self.approvePairing = approvePairing
@@ -86,16 +99,18 @@ final class DesktopSession: ObservableObject {
         }
     }
     func refresh() {
-        guard !busy, !closed, !presenting, !address.isEmpty else { return }; busy = true; error = nil
+        guard !busy, !closed, !presenting, !address.isEmpty else { return }
+        discovering = true; busy = true; error = nil
         let id = armDeadline(discoveryTimeout, message: "Desktop didn’t respond. Check that Desktop is running on your Mac, then retry.")
         let engine = self.engine
-        let certificate = SecretStore.read(certificateKey)
+        let certificate = readCertificate(certificateKey)
         paired = certificate != nil
-        engine.loadHost(address, certificate: certificate) { [weak self, weak engine] applications, error in
+        engine.loadHost(address, certificate: certificate) { [weak self, weak engine] applications, error, retryable in
             Task { @MainActor in
                 guard let self, let engine, !self.closed, self.engine === engine, self.operationID == id else { return }
-                self.stopDeadline(); self.busy = false
-                if let error { self.hostReady = false; self.error = error; self.openRequested = false; return }
+                if let error { self.discoveryFailed(error, retryable: retryable); return }
+                self.stopDeadline(); self.discovering = false; self.busy = false
+                self.discoveryRetryCount = 0
                 #if DEBUG
                 if self.address.hasPrefix("127.0.0.1:") { print("TRUNKLINE_REMOTE desktop_host_ready"); fflush(stdout) }
                 #endif
@@ -110,8 +125,9 @@ final class DesktopSession: ObservableObject {
     }
 
     func openDesktop() {
-        guard !busy, !closed else { return }
+        guard canOpenDesktop, !closed else { return }
         openRequested = true
+        if busy { return }
         if !hostReady { refresh() }
         else if !paired { pair() }
         else if let desktop = apps.first(where: { $0.name == "Desktop" }) {
@@ -129,9 +145,33 @@ final class DesktopSession: ObservableObject {
     }
     func cancelPreparation() { guard busy, !presenting else { return }; resetPreparation(error: nil) }
     private func resetPreparation(error: String?) {
-        stopDeadline(); engine.cancel(); engine = engineFactory(); bindEngineCallbacks()
+        stopDeadline(); replaceEngine()
+        discovering = false; discoveryRetryCount = 0
+        restoringDesktop = false; pendingLaunch = nil
         busy = false; pin = nil; hostReady = false; openRequested = false; apps = []
         self.error = error
+    }
+    private func replaceEngine() {
+        engine.cancel(); engine = engineFactory(); bindEngineCallbacks()
+    }
+    private func discoveryFailed(_ message: String, retryable: Bool) {
+        stopDeadline()
+        hostReady = false
+        guard retryable, discoveryRetryCount < discoveryRetryDelays.count else {
+            discovering = false; busy = false; openRequested = false
+            restoringDesktop = false
+            discoveryRetryCount = 0
+            error = message
+            return
+        }
+        let delay = discoveryRetryDelays[discoveryRetryCount]
+        discoveryRetryCount += 1
+        deadline = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, !self.closed else { return }
+            self.busy = false
+            self.refresh()
+        }
     }
     @discardableResult private func armDeadline(_ duration: Duration, message: String) -> UUID {
         stopDeadline()
@@ -139,7 +179,12 @@ final class DesktopSession: ObservableObject {
         deadline = Task { [weak self] in
             do { try await Task.sleep(for: duration) } catch { return }
             guard let self, self.operationID == id, !self.closed else { return }
-            self.resetPreparation(error: message)
+            if self.discovering && self.openRequested {
+                self.replaceEngine()
+                self.discoveryFailed(message, retryable: true)
+            } else {
+                self.resetPreparation(error: message)
+            }
         }
         return id
     }
@@ -148,9 +193,13 @@ final class DesktopSession: ObservableObject {
     func launch(_ application: Application) {
         guard paired, !busy else { return }
         guard TrunklineDesktopStreamAvailable() else {
-            error = "A desktop is open in another window. Close that desktop before opening this one."
+            if restoringDesktop {
+                pendingLaunch = application; busy = true
+                armDeadline(.seconds(5), message: Self.occupiedMessage)
+            } else { error = Self.occupiedMessage }
             return
         }
+        restoringDesktop = false
         let geometry = DesktopStreamGeometry.size(
             maximumWidth: profile.maximumWidth,
             displayWidth: display.width,
@@ -166,9 +215,37 @@ final class DesktopSession: ObservableObject {
         }
         stream = config; presenting = true
     }
+    func streamBecameAvailable() {
+        guard !closed, let application = pendingLaunch, TrunklineDesktopStreamAvailable() else { return }
+        pendingLaunch = nil; stopDeadline(); busy = false
+        launch(application)
+    }
+    func streamEnded() {
+        guard presenting else { return }
+        presenting = false
+        error = "The desktop stream ended."
+    }
     func close() {
         closed = true; stopDeadline(); presenting = false; stream = nil; approvePairing = nil; engine.cancel()
-        busy = false; pin = nil; hostReady = false; apps = []; openRequested = false
+        pendingLaunch = nil
+        discovering = false; busy = false; pin = nil; hostReady = false; apps = []; openRequested = false
+    }
+}
+
+struct ConnectionLoadingView: View {
+    let message: String
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            ProgressView(message)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("connection-loading-progress")
+            Button("Cancel", role: .cancel, action: cancel).trunklineActionStyle()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.workspaceBackground.ignoresSafeArea())
     }
 }
 
@@ -181,6 +258,9 @@ struct DesktopView: View {
     @State private var settings = false
     @State private var diagnostics = false
     @State private var disconnect = false
+    private var showingOpening: Bool {
+        model.wantsDesktopOpen && desktop.awaitingOpen && !desktop.presenting && desktop.error == nil && desktop.pin == nil
+    }
     var body: some View {
         NavigationStack {
             List {
@@ -203,7 +283,7 @@ struct DesktopView: View {
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 .opacity(desktop.busy ? 0 : 1)
                                 .accessibilityHidden(desktop.busy)
-                            Button("Cancel", role: .cancel) { desktop.cancelPreparation() }
+                            Button("Cancel", role: .cancel, action: cancelOpening)
                                 .buttonStyle(.borderless)
                                 .opacity(desktop.busy ? 1 : 0)
                                 .allowsHitTesting(desktop.busy)
@@ -212,7 +292,7 @@ struct DesktopView: View {
                     }.padding(.vertical, 4)
                     Button {
                         desktop.display = controls.snapshot?.desktopDisplays?.selectedDisplay?.geometry ?? model.desktopDisplay
-                        desktop.openDesktop()
+                        requestOpening()
                     } label: {
                         Label("Open desktop", systemImage: "arrow.up.right.square")
                             .trunklineActionLabel()
@@ -223,10 +303,10 @@ struct DesktopView: View {
                                     .opacity(desktop.busy ? 1 : 0)
                                     .accessibilityHidden(true)
                             }
-                    }.trunklineActionStyle(prominent: true).disabled(desktop.busy || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
+                    }.trunklineActionStyle(prominent: true).disabled(!desktop.canOpenDesktop || controls.pending != nil || controls.snapshot?.desktopDisplays?.switching == true)
                 }
                 if let error = desktop.error {
-                    TrunklineSection { Text(error).foregroundStyle(.orange); Button("Retry") { desktop.openDesktop() }.disabled(desktop.busy) }
+                    TrunklineSection { Text(error).foregroundStyle(.orange); Button("Retry", action: requestOpening).disabled(desktop.busy) }
                 }
                 if controls.snapshot?.desktopDisplays?.isAvailable == true {
                     TrunklineSection("Display") { DesktopDisplayMenu(controls: controls) }
@@ -260,7 +340,8 @@ struct DesktopView: View {
                 if let id = model.selectedMacID { desktop.configurePreferences(macID: id, store: model.preferences) }
                 model.onDesktopError = { [weak desktop] message, token in desktop?.receivePairingFailure(message, token: token) }
                 desktop.display = model.desktopDisplay
-                desktop.open(pairingLink: model.sessionPairingLink.isEmpty ? model.pairingText : model.sessionPairingLink) { model.send(.pairDesktop($0)) }
+                desktop.open(pairingLink: model.sessionPairingLink.isEmpty ? model.pairingText : model.sessionPairingLink,
+                             automaticallyOpen: model.wantsDesktopOpen) { model.send(.pairDesktop($0)) }
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
@@ -274,6 +355,12 @@ struct DesktopView: View {
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active && !desktop.presenting && desktop.pin == nil { desktop.refresh() } }
             .onChange(of: model.phase) { _, phase in if phase != .connected { desktop.close() } }
+            .onChange(of: model.wantsDesktopOpen) { _, wanted in
+                if !wanted { desktop.cancelPreparation() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TrunklineDesktopStopped"))) { _ in
+                desktop.streamBecameAvailable()
+            }
             .onChange(of: model.desktopDisplay) { _, display in desktop.display = display }
             .confirmationDialog("Disconnect from your Mac?", isPresented: $disconnect, titleVisibility: .visible) {
                 Button("Disconnect", role: .destructive) { model.disconnect() }
@@ -295,9 +382,30 @@ struct DesktopView: View {
                 }.presentationDetents([.medium, .large])
             }
             .fullScreenCover(isPresented: $desktop.presenting, onDismiss: { desktop.stream = nil }) {
-                if let config = desktop.stream { DesktopScreen(engine: desktop.engine, config: config, model: model, adaptive: desktop.adaptiveQuality) { desktop.presenting = false } }
+                if let config = desktop.stream {
+                    DesktopScreen(engine: desktop.engine, config: config, model: model, adaptive: desktop.adaptiveQuality,
+                                  onStreamEnded: { desktop.streamEnded() }) {
+                        model.cancelDesktop()
+                        desktop.presenting = false
+                    }
+                }
             }
         }
+        .accessibilityHidden(showingOpening)
+        .overlay {
+            if showingOpening {
+                ConnectionLoadingView(message: "Opening your Mac desktop…", cancel: cancelOpening)
+            }
+        }
+    }
+
+    private func requestOpening() {
+        model.requestDesktop()
+        desktop.openDesktop()
+    }
+    private func cancelOpening() {
+        model.cancelDesktop()
+        desktop.cancelPreparation()
     }
 }
 
@@ -325,6 +433,7 @@ private struct DesktopScreen: View {
     let config: StreamConfiguration
     @ObservedObject var model: ConnectionModel
     var adaptive = true
+    var onStreamEnded: () -> Void = {}
     let close: () -> Void
     @StateObject private var quality = AdaptiveDesktopQuality()
     @SwiftUI.State private var healthVisible = false
@@ -446,10 +555,10 @@ private struct DesktopScreen: View {
         if ProcessInfo.processInfo.arguments.contains("--ui-review") {
             ExternalDisplayReviewSurface(controller: $controller)
         } else {
-            DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
+            DesktopSurface(engine: engine, config: config, close: onStreamEnded, controller: $controller)
         }
         #else
-        DesktopSurface(engine: engine, config: config, close: close, controller: $controller)
+        DesktopSurface(engine: engine, config: config, close: onStreamEnded, controller: $controller)
         #endif
     }
     private func updateDisplayGeometry(_ snapshot: MacControlSnapshot?) {

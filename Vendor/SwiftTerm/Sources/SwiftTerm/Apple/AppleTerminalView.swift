@@ -1401,16 +1401,14 @@ extension TerminalView {
     // It is also cheap, so should be called when new data has been posted or received.
     func queuePendingDisplay ()
     {
-        // throttle
-        if !pendingDisplay {
-            let fps60 = 16670000
-            // let fps30 = 16670000*2
-            let fpsDelay = fps60
-            pendingDisplay = true
-            DispatchQueue.main.asyncAfter(
-                deadline: DispatchTime (uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds + UInt64 (fpsDelay)),
-                execute: updateDisplay)
-        }
+        guard !pendingDisplay else { return }
+        pendingDisplay = true
+        #if TRUNKLINE && (os(iOS) || os(visionOS))
+        // Coalesce terminal output into the next available display frame.
+        startDisplayUpdates()
+        #else
+        DispatchQueue.main.asyncAfter(deadline: .now() + .nanoseconds(16_670_000), execute: updateDisplay)
+        #endif
     }
     
     ///
@@ -1577,12 +1575,16 @@ extension TerminalView {
         if allowMouseReporting && terminal.mouseMode != .off {
             selection.active = false
         }
+        #if !TRUNKLINE || !(os(iOS) || os(visionOS))
         startDisplayUpdates()
+        #endif
     }
     
     func feedFinish ()
     {
+        #if !TRUNKLINE || !(os(iOS) || os(visionOS))
         suspendDisplayUpdates ()
+        #endif
         queuePendingDisplay()
     }
     

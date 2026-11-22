@@ -104,6 +104,7 @@ struct TerminalSurface: UIViewRepresentable {
     }
     static func dismantleUIView(_ terminal: SessionTerminalView, coordinator: Coordinator) {
         coordinator.active = false
+        terminal.updateUiClosed()
         terminal.onFocusChange = nil
         terminal.terminalDelegate = nil
         if coordinator.input?.terminal === terminal { coordinator.input?.terminal = nil }
@@ -139,9 +140,8 @@ struct TerminalSurface: UIViewRepresentable {
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) { model?.send(.resizeTerminal(id: id, columns: newCols, rows: newRows)) }
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
             guard active, (source as? SessionTerminalView)?.acceptsInput != false else { return }
-            let bytes = Array(data)
-            for offset in stride(from: 0, to: bytes.count, by: 16384) {
-                model?.send(.terminalInput(id: id, bytes: Data(bytes[offset..<min(bytes.count, offset+16384)])))
+            for offset in stride(from: data.startIndex, to: data.endIndex, by: 16384) {
+                model?.send(.terminalInput(id: id, bytes: Data(data[offset..<min(data.endIndex, offset + 16384)])))
             }
         }
         func setTerminalTitle(source: TerminalView, title: String) {}

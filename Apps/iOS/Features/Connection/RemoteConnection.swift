@@ -13,16 +13,30 @@ private func receiveRemoteEvent(_ pointer: UnsafePointer<CChar>?) {
 
 @MainActor
 final class RemoteConnection {
+    enum StartFailure: LocalizedError {
+        case unsupported, inUse, closing, interrupted(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupported: "Away access requires a physical device in this build."
+            case .inUse: "Away access is already in use in another window. Disconnect there before opening another."
+            case .closing: "The previous Away connection is still closing. Try connecting again in a moment."
+            case let .interrupted(message): message
+            }
+        }
+    }
+
     static weak var active: RemoteConnection?
     private var ready: CheckedContinuation<Void, Error>?
     private var running = false
     private var stopped = false
     var onLost: ((String) -> Void)?
     func start(_ ticket: RemoteAccessTicket) async throws {
+        try Task.checkCancellation()
         #if targetEnvironment(simulator)
-        throw NSError(domain: "Remote", code: 1, userInfo: [NSLocalizedDescriptionKey: "Away access requires a physical device in this build."])
+        throw StartFailure.unsupported
         #else
-        guard Self.active == nil else { throw NSError(domain: "Remote", code: 2, userInfo: [NSLocalizedDescriptionKey: "Away access is already in use in another window or is still closing. Disconnect that Away connection before opening another."]) }
+        if let active = Self.active { throw active.stopped ? StartFailure.closing : StartFailure.inUse }
         let config = String(decoding: try JSONEncoder().encode(ticket.config), as: UTF8.self)
         Self.active = self; running = true; stopped = false
         trunkline_p2p_prepare()
@@ -51,7 +65,7 @@ final class RemoteConnection {
         }
         #endif
         if event == "tunnel_ready" { let callback = ready; ready = nil; callback?.resume() }
-        if event == "tunnel_lost" { fail("The direct connection was interrupted. Tap Connect to retry.") }
+        if event == "tunnel_lost" { fail("The direct connection was interrupted.") }
         if event == "native_error", let detail = object["details"] as? [String: Any] {
             fail(detail["error"] as? String ?? "Could not establish a direct connection.")
         }
@@ -62,7 +76,7 @@ final class RemoteConnection {
         // Retire the worker before notifying the model. Native failure and
         // worker exit can arrive together, and only the first is actionable.
         stop()
-        if let callback { callback.resume(throwing: NSError(domain: "Remote", code: 1, userInfo: [NSLocalizedDescriptionKey: message])) }
+        if let callback { callback.resume(throwing: StartFailure.interrupted(message)) }
         else { onLost?(message) }
     }
     func stop() {

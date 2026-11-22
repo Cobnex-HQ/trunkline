@@ -10,7 +10,7 @@ FOUNDATION_EXPORT NSDictionary<NSString *, NSNumber *> * _Nullable TrunklineDesk
 @property(nonatomic, copy, nullable) void (^paired)(NSData *);
 @property(nonatomic, copy, nullable) void (^failed)(NSString *);
 - (void)loadHost:(NSString *)address certificate:(nullable NSData *)certificate
-     completion:(void (^)(NSArray<NSDictionary<NSString *, NSString *> *> * _Nullable apps, NSString * _Nullable error))completion NS_SWIFT_DISABLE_ASYNC;
+     completion:(void (^)(NSArray<NSDictionary<NSString *, NSString *> *> * _Nullable apps, NSString * _Nullable error, BOOL retryable))completion NS_SWIFT_DISABLE_ASYNC;
 - (void)pair;
 - (nullable StreamConfiguration *)configurationForApp:(NSString *)appID title:(NSString *)title
     width:(int)width height:(int)height fps:(int)fps bitrate:(int)bitrate directTouch:(BOOL)directTouch framePacing:(BOOL)framePacing stats:(BOOL)stats;

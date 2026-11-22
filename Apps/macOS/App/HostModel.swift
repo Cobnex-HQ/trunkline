@@ -242,7 +242,7 @@ final class HostModel: ObservableObject {
     }
     func disconnect() {
         sunshine.stop()
-        if let activeID { channels[activeID]?.close("Disconnected on Mac.") }
+        if let activeID { channels[activeID]?.reject("Disconnected on Mac.") }
     }
     private func accept(_ connection: NWConnection) {
         guard channels.count < 4, limiter.isAllowed() else { connection.cancel(); return }
@@ -255,7 +255,9 @@ final class HostModel: ObservableObject {
         let acceptedAt = Date()
         let watchdog = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak channel] _ in
             MainActor.assumeIsolated {
-            if (!authenticated && Date().timeIntervalSince(acceptedAt) > 15) || Date().timeIntervalSince(lastActivity) > 40 || Date().timeIntervalSince(acceptedAt) > 8 * 3600 {
+            if Date().timeIntervalSince(acceptedAt) > 8 * 3600 {
+                channel?.reject("Session expired. Connect again.")
+            } else if (!authenticated && Date().timeIntervalSince(acceptedAt) > 15) || Date().timeIntervalSince(lastActivity) > 40 {
                 channel?.close("Session expired. Connect again.")
             }
             }
